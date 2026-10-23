@@ -219,6 +219,7 @@ function overlayExport(): Plugin {
                 prog.framesAt = Date.now()
                 prog.stage = 'frames'
               }
+              if (out.includes('composing MP4')) prog.stage = 'mp4'
               if (out.includes('composing MOV')) prog.stage = 'mov'
               if (out.includes('composing WebM')) prog.stage = 'webm'
               if (out.includes('baking')) prog.stage = 'sfx'

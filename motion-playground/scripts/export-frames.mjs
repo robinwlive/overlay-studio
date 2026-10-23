@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * 导出透明动效层 · PNG 序列
+ * 导出动效层 · PNG 序列
  * 原理:无头 Chrome + CDP 虚拟时间(Emulation.setVirtualTimePolicy),
- * 时钟完全由脚本控制,每帧精确推进 1000/fps 毫秒再截图(omitBackground → 透明)。
+ * 时钟完全由脚本控制,每帧精确推进 1000/fps 毫秒再截图。
+ * 底色两种:透明(omitBackground,叠在原片上用)/ 黑底(成片直接用,默认)。
  * 用法: node scripts/export-frames.mjs <job.json>
- * job: { doc, fps, duration, base }
+ * job: { doc, person, fps, duration, base }
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -23,6 +24,7 @@ if (!jobFile) {
 const job = JSON.parse(fs.readFileSync(jobFile, "utf8"));
 const {
   doc = null, // 整份 overlay JSON
+  person: jobPerson, // 人物出镜模式(UI 显式传)
   scale = 1,
   speed = 1, // 动画速度倍率(与 Studio「动画速度」滑杆一致)
   fps = 30,
@@ -30,6 +32,11 @@ const {
   base = "http://localhost:5177",
   keepFrames = false, // true = 保留 PNG 中间目录
 } = job;
+
+// 人物出镜模式:UI 显式传了就以它为准,否则读编排里的 doc.person;缺省 = 无人物。
+// 它同时决定两件事:截图是否保留 alpha(透明)和合成哪一种成片。
+const person = typeof jobPerson === "boolean" ? jobPerson : doc?.person === true;
+const ALPHA = person; // true = 透明动效层;false = 黑底成片
 
 const STAGE = { w: 1920, h: 1080 };
 
@@ -283,9 +290,9 @@ try {
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e).split("\n")[0]));
 
-  // 页面底色透明(截图 omitBackground 的前提)
+  // 页面底色跟着模式走:透明(omitBackground 的前提)/ 不透明的黑(黑底成片)
   await client.send("Emulation.setDefaultBackgroundColorOverride", {
-    color: { r: 0, g: 0, b: 0, a: 0 },
+    color: { r: 0, g: 0, b: 0, a: ALPHA ? 0 : 1 },
   });
 
   // 整份编排在页面脚本运行前注入(见上面 url 处注释)
@@ -370,7 +377,8 @@ try {
     }, intervalMs);
     await page.screenshot({
       path: path.join(outDir, `frame_${String(i).padStart(6, "0")}.png`),
-      omitBackground: true,
+      // 透明模式保 alpha;黑底成片不要 alpha —— 带着 alpha 交给 x264 只会白忙一场
+      omitBackground: ALPHA,
     });
     if (i % 30 === 0 || i === totalFrames) {
       console.log(`progress ${i}/${totalFrames}`);
@@ -383,10 +391,43 @@ try {
   // 趁浏览器还开着取出来,后面写进「合成说明」。
   const camSegs = await page.evaluate(() => window.__CAM_SEGMENTS ?? []).catch(() => []);
 
-  // ---- PNG 序列 → 自动合成透明视频(需要本机 ffmpeg;没有则跳过,只留 PNG) ----
-  const result = { ok: true, dir: outDir, frames: totalFrames, fps, mov: null, webm: null };
+  // ---- PNG 序列 → 自动合成视频(需要本机 ffmpeg;没有则跳过,只留 PNG) ----
+  // 两种底色,两条成品路线:
+  //   person=true  → 透明 ProRes 4444 MOV(+ VP9 WebM),拖进剪映叠在原片上
+  //   person=false → 黑底 H.264 MP4(默认),导出即完整成片,不用再合成
+  const result = {
+    ok: true, dir: outDir, frames: totalFrames, fps,
+    bg: person ? "alpha" : "black",
+    primary: null, // 主成品(音效/说明都挂在它身上)
+    video: null,   // 黑底成片
+    mov: null, webm: null, // 透明层
+  };
   const hasFfmpeg = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
-  if (hasFfmpeg) {
+  if (hasFfmpeg && !person) {
+    const seq = path.join(outDir, "frame_%06d.png");
+    // 黑底成片:帧本身已经不透明(截图 omitBackground=false),直接 H.264。
+    // 不用 ProRes:黑底没有 alpha 要保,ProRes 只会让文件大到几倍还没人认。
+    // CRF 18 + yuv420p + bt709:平台/手机/剪映都直吃,颜色和编辑器里一致。
+    console.log("composing MP4 (H.264, black bg)...");
+    const mp4 = path.join(finalDir, `${name}-${stamp}.mp4`);
+    const r0 = spawnSync(
+      "ffmpeg",
+      ["-y", "-framerate", FPS_ARG, "-i", seq,
+        "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+        "-movflags", "+faststart", mp4],
+      { stdio: "ignore" },
+    );
+    if (r0.status === 0 && fs.existsSync(mp4)) {
+      result.video = mp4;
+      result.primary = mp4;
+    } else {
+      fs.rmSync(mp4, { force: true });
+      result.ok = false;
+      result.error = `MP4 合成失败(磁盘还剩 ${gb(freeBytes(ROOT))}GB),半截文件已删除`;
+      console.error(`\n【导出失败原因】${result.error}`);
+    }
+  } else if (hasFfmpeg) {
     const seq = path.join(outDir, "frame_%06d.png");
     // 1) 剪映友好:ProRes 4444 透明 MOV(编码快,文件较大)→ 成品放 exports/output/
     console.log("composing MOV (ProRes 4444 alpha)...");
@@ -418,6 +459,7 @@ try {
     );
     if (r1.status === 0 && fs.existsSync(mov)) {
       result.mov = mov;
+      result.primary = mov;
     } else {
       // 失败多半是写到一半磁盘满了:半截 MOV 没有 moov 索引,留着只会被误当成成片
       fs.rmSync(mov, { force: true });
@@ -441,10 +483,10 @@ try {
     console.log("ffmpeg not found — skip video composing, PNG sequence only");
   }
 
-  // ---- 音效烤入:按每张卡的出现时刻把音效混成音轨,直接封进 MOV ----
+  // ---- 音效烤入:按每张卡的出现时刻把音效混成音轨,直接封进主成品 ----
   // 每卡可用参数 sfx 覆盖:留空 = 按类型自动;"none" = 静音;其余 = public/sfx/<名>.mp3
   // public/sfx/ 里没放同名文件时,退回随仓库附带的 CC0 默认音效(public/sfx-default/)
-  if (doc?.cards?.length && result.mov && hasFfmpeg) {
+  if (doc?.cards?.length && result.primary && hasFfmpeg) {
     const SFX_DIR = path.join(ROOT, "public", "sfx");
     const SFX_DEFAULT_DIR = path.join(ROOT, "public", "sfx-default");
     const KIND_SFX = {
@@ -479,7 +521,7 @@ try {
       .filter(Boolean)
       .sort((a, b) => a.t - b.t);
     if (points.length) {
-      console.log(`baking ${points.length} sfx into MOV...`);
+      console.log(`baking ${points.length} sfx into ${path.basename(result.primary)}...`);
       // 1) 静音底轨(定全长)+ 每个音效裁 3.2s 渐出、延迟到卡片出现时刻,混成一条音轨
       const mixFile = path.join(outDir, "sfx-mix.m4a");
       const args = ["-y", "-f", "lavfi", "-t", String(duration), "-i", "anullsrc=r=44100:cl=stereo"];
@@ -496,21 +538,26 @@ try {
         "-map", "[out]", "-c:a", "aac", "-b:a", "192k", mixFile,
       );
       const rMix = spawnSync("ffmpeg", args, { stdio: "ignore" });
-      // 2) 音轨封进 MOV(视频流原样拷贝,不重编码)
+      // 2) 音轨封进主成品(视频流原样拷贝,不重编码)
       if (rMix.status === 0 && fs.existsSync(mixFile)) {
-        const tmp = result.mov.replace(/\.mov$/, "-audio.mov");
+        const primary = result.primary;
+        const ext = path.extname(primary); // .mov(透明层)/ .mp4(黑底成片)
+        const tmp = primary.replace(new RegExp(`\\${ext}$`), `-audio${ext}`);
+        // 音频编码按容器选:MOV 走 PCM(剪映读 MOV 里的 AAC 不稳,见下),
+        // MP4 走 AAC(MP4 里塞 PCM 兼容性差,平台也不收)
+        const audioArgs = ext === ".mp4" ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "pcm_s16le"];
         const rMux = spawnSync(
           "ffmpeg",
-          ["-y", "-i", result.mov, "-i", mixFile,
-            // 音轨转 PCM 再封进 MOV。剪映读 .mov 里的 AAC 不稳:有一次导出
+          ["-y", "-i", primary, "-i", mixFile,
+            // MOV:音轨转 PCM 再封。剪映读 .mov 里的 AAC 不稳:有一次导出
             // 音轨齐全(40 个点、max 0dB)但剪映里就是没声音,转成 pcm_s16le 后立刻正常。
             // AAC 也不是每次都出问题,
             // 所以这不是必现问题 —— 但 PCM 是 MOV 的通用选择,只多约 30MB,直接默认给它。
-            "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "pcm_s16le", tmp],
+            "-map", "0:v", "-map", "1:a", "-c:v", "copy", ...audioArgs, tmp],
           { stdio: "ignore" },
         );
         if (rMux.status === 0 && fs.existsSync(tmp)) {
-          fs.renameSync(tmp, result.mov);
+          fs.renameSync(tmp, primary);
           result.sfxBaked = points.length;
           console.log(`sfx baked: ${points.length} points`);
         }
@@ -518,9 +565,11 @@ try {
       // 3) 清单:记录烤了什么(想换音效:选中卡片 → 「音效」下拉 → 重导)
       const fmt = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
       const sheet = [
-        `音效清单 · ${name}-${stamp}(已直接混入 MOV,无需手动加)`,
+        `音效清单 · ${name}-${stamp}(已直接混入成片,无需手动加)`,
         "想调整:回 Studio 选中卡片 → 节奏组「音效」下拉换一个(选中即试听)或选「无音效」,重新导出。",
-        "整条音效轨的音量在剪映里对 MOV 轨道统一调(建议比人声低,约 -12~-18dB)。",
+        person
+          ? "整条音效轨的音量在剪映里对 MOV 轨道统一调(建议比人声低,约 -12~-18dB)。"
+          : "黑底成片里已经包含这条音效轨;要单独调音量,在剪映里把成片音轨和配音轨分开调。",
         "",
         ...points.map((p) => `${fmt(p.t)}  ${p.kind.padEnd(14)}  ${p.sfx}`),
       ].join("\n");
@@ -531,30 +580,42 @@ try {
   }
 
   // ---- 合成说明:只在真的烤了人物时才生成 ----
-  // 这几段的透明层里已经有一份人物画面,剪映里必须把原始口播轨盖住,
-  // 否则会看到两层人。说明放在成品旁边,而不是 README —— 用户打开
-  // exports/output/ 拿 MOV 的那一刻,正好是他要去剪映的前一秒。
-  if (camSegs.length && result.mov) {
+  // person=true:这几段的透明层里已经有一份人物画面,剪映里必须把原始口播轨盖住,
+  //              否则会看到两层人。
+  // person=false:黑底成片里这几段本来就只有卡片(和卡内录屏),不存在盖轨问题,
+  //              说明只留着提醒「这几段带了人物画面」,别当成漏了。
+  if (camSegs.length && result.primary) {
     const fmt2 = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
-    const note = [
-      `合成说明 · ${name}-${stamp}`,
-      "",
-      "这条动效层里有 " + camSegs.length + " 段把口播人物烤了进去(运镜/取景类卡片)。",
-      "剪映里这几段要把【原始口播轨盖住】,否则会看到两层人:",
-      "",
-      ...camSegs.map((s) => `  ${fmt2(s.start)} — ${fmt2(s.end)}   ${s.kind}`),
-      "",
-      "做法:把 MOV 放在最上层轨道,上面这几个时间段把下面的原始口播轨切开、静音或删除画面",
-      "(声音要留)。其余时间段照常,MOV 盖在原片上即可。",
-    ].join("\n");
+    const note = person
+      ? [
+          `合成说明 · ${name}-${stamp}`,
+          "",
+          "这条动效层里有 " + camSegs.length + " 段把口播人物烤了进去(运镜/取景类卡片)。",
+          "剪映里这几段要把【原始口播轨盖住】,否则会看到两层人:",
+          "",
+          ...camSegs.map((s) => `  ${fmt2(s.start)} — ${fmt2(s.end)}   ${s.kind}`),
+          "",
+          "做法:把 MOV 放在最上层轨道,上面这几个时间段把下面的原始口播轨切开、静音或删除画面",
+          "(声音要留)。其余时间段照常,MOV 盖在原片上即可。",
+        ].join("\n")
+      : [
+          `合成说明 · ${name}-${stamp}`,
+          "",
+          "这条是黑底成片(无人物),不需要再合成。",
+          `其中 ${camSegs.length} 段卡片里带了口播画面(运镜/取景类卡片),已经直接烤进成片:`,
+          "",
+          ...camSegs.map((s) => `  ${fmt2(s.start)} — ${fmt2(s.end)}   ${s.kind}`),
+          "",
+          "如果这几段本来不该出现人物,把对应的卡片换成不带口播画面的类型,或清掉它的「口播视频」。",
+        ].join("\n");
     const notePath = path.join(finalDir, `${name}-${stamp}-合成说明.txt`);
     fs.writeFileSync(notePath, note, "utf8");
     result.camNote = notePath;
   }
 
-  // ---- 清理 PNG 中间目录:成片(MOV)到手后这几 GB 就没用了,默认删除 ----
+  // ---- 清理 PNG 中间目录:成片到手后这几 GB 就没用了,默认删除 ----
   // 合成失败或没装 ffmpeg 时保留:PNG 是几分钟渲染的成果,留着可手动重合成。
-  if (result.mov && !keepFrames) {
+  if (result.primary && !keepFrames) {
     fs.rmSync(outDir, { recursive: true, force: true });
     result.dir = null;
     console.log("cleaned PNG frames dir");

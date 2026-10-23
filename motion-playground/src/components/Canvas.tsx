@@ -1,15 +1,10 @@
 import { inkVars } from "../effects/hud/accent";
 import { BreathContext } from "../effects/breath";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { EffectDef } from "../effects/types";
 import { EFFECTS } from "../effects/registry";
 import { STAGE } from "../stage";
+import { nopersonSingle, NOPERSON_BOOST } from "../person";
 import { focusCamGeomAt } from "../effects/hud/camGeom";
 import { outroFade, type OverlayCard } from "../overlay/types";
 import { useEnter } from "../effects/useAnimation";
@@ -23,7 +18,10 @@ interface CanvasProps {
   params: any;
   playToken: number;
   showGuides: boolean;
-  showPerson: boolean;
+  /** 人物出镜模式:true = 有人出镜(画人物占位、安全区参考线);false = 无人物黑底构图 */
+  person: boolean;
+  /** 无人物构图计划(由 App 算好传入):center = 落位收到中间,box = 只把盒子挑到中线 */
+  noperson?: { center: Set<string>; box: Set<string> };
   videoUrl: string | null;
   fxScale: number;
   /** 时间轴模式:当前时间点应显示的卡片(null = 单特效预览模式) */
@@ -73,6 +71,8 @@ function CardShell({
   stageScale,
   fxScale,
   animSpeed,
+  boxCenter,
+  npBoost,
   past,
   outro,
   onNudge,
@@ -85,6 +85,10 @@ function CardShell({
   stageScale: number;
   fxScale: number;
   animSpeed: number;
+  /** 无人物构图:只把盒子挑到中线(卡片自己不支持 center 落位时的退路) */
+  boxCenter?: boolean;
+  /** 无人物构图:单独出现的卡默认放大一档(成对分列的卡不放大,免得两边撞上) */
+  npBoost?: number;
   /** 讲过变浅:时间轴过了该卡 dimAt 后压暗让位 */
   past?: boolean;
   /** 退场淡出:临近 end 的整卡不透明度(0~1),1 或缺省 = 不淡 */
@@ -95,7 +99,7 @@ function CardShell({
   children: ReactNode;
 }) {
   const { w: STAGE_W, h: STAGE_H } = STAGE;
-  const scale = fxScale * (Number(params.scale) || 1);
+  const scale = fxScale * (Number(params.scale) || 1) * (npBoost ?? 1);
   // 有效倍速 = 全局「动画速度」×该卡自己的「动画速度(此卡)」
   const speed = animSpeed * (Number(params.speed) || 1);
   return (
@@ -108,6 +112,8 @@ function CardShell({
       }}
       /* 逐卡主题:这张卡自己选的亮/暗覆盖全局(未选则继承) */
       data-card-theme={(params.theme as string) || undefined}
+      /* 无人物构图:没有人物可让位、也不和对面成对 → 盒子收到中线(noperson.css) */
+      data-np-center={boxCenter ? "1" : undefined}
       /* 讲过变浅:挂在这个 display:contents 的壳上,靠后代选择器落到卡根元素,
          所以每一张卡都能用,不必逐卡加参数 */
       data-past={past ? "1" : undefined}
@@ -217,7 +223,8 @@ export function Canvas({
   params,
   playToken,
   showGuides,
-  showPerson,
+  person,
+  noperson,
   videoUrl,
   fxScale,
   overlayCards,
@@ -297,6 +304,8 @@ export function Canvas({
         ref={stageRef}
         className={`stage${isHud ? " is-hud" : ""}${glow ? "" : " no-glow"}`}
         data-theme={theme}
+        /* 人物出镜与否决定构图原则:data-person=0 → 占中间、更饱满(noperson.css) */
+        data-person={person ? "1" : "0"}
         data-pip={pip && pipCard ? pipCard.kind : undefined}
         style={{
           width: STAGE_W,
@@ -366,16 +375,16 @@ export function Canvas({
           />
         )}
 
-        {/* 没有真实视频时的人物占位:提醒别把卡放到脸上 */}
-        {showPerson && !videoUrl && (
+        {/* 没有真实视频时的人物占位:提醒别把卡放到脸上(仅人物出镜模式) */}
+        {person && !videoUrl && (
           <div className="person">
             <div className="person-body" />
             <span className="person-tag">人物安全区</span>
           </div>
         )}
 
-        {/* 参考线:安全区边界 */}
-        {showGuides && (
+        {/* 参考线:安全区边界。无人物时这些边界不存在,即使开关开着也不画 */}
+        {showGuides && person && (
           <>
             <div className="guide guide-safe" />
             <div className="guide guide-slot guide-slot-left" />
@@ -400,8 +409,12 @@ export function Canvas({
                 const C = def.Component;
                 const cardSide = (card.params.side as string) ?? "left";
                 // __t/__start/__end:时间感知卡据此高亮当前章、切字幕行
+                // 无人物时:能真居中的卡(自己支持 center 且没和对面成对)换成 center,
+                // 卡宽/字号/进场方向跟着算成居中版;其余靠 CardShell 的 data-np-center
                 const cardParams: Record<string, unknown> = {
-                  ...card.params,
+                  ...(noperson?.center.has(card.id)
+                    ? { ...card.params, [card.params.side != null ? "side" : "position"]: "center" }
+                    : card.params),
                   __t: now,
                   __start: card.start,
                   __end: card.end,
@@ -416,6 +429,12 @@ export function Canvas({
                     stageScale={scale}
                     fxScale={fxScale}
                     animSpeed={animSpeed ?? 1}
+                    boxCenter={noperson?.box.has(card.id)}
+                    npBoost={
+                      noperson?.center.has(card.id) || noperson?.box.has(card.id)
+                        ? NOPERSON_BOOST
+                        : 1
+                    }
                     past={(Number(card.params.dimAt) || 0) > 0 && (now ?? 0) >= Number(card.params.dimAt)}
                     outro={outro < 1 ? outro : undefined}
                     onNudge={onNudge}
@@ -448,9 +467,19 @@ export function Canvas({
                   <div
                     key={`seg-${card.seg}`}
                     className="seg-stack"
-                    style={{
-                      transform: `translate(${Number(head.params.offsetX) || 0}px, ${Number(head.params.offsetY) || 0}px)`,
-                    }}
+                    style={
+                      /* 段落顺排容器:有人出镜时贴左列竖排;无人物时收到中线——
+                         容器是 absolute,transform 由内联样式给定,所以居中只能在这儿加
+                         (noperson.css 没法覆盖内联 transform)。 */
+                      person
+                        ? {
+                            transform: `translate(${Number(head.params.offsetX) || 0}px, ${Number(head.params.offsetY) || 0}px)`,
+                          }
+                        : {
+                            left: "50%",
+                            transform: `translate(calc(-50% + ${Number(head.params.offsetX) || 0}px), ${Number(head.params.offsetY) || 0}px)`,
+                          }
+                    }
                   >
                     {members.map(renderOne)}
                   </div>,
@@ -459,23 +488,30 @@ export function Canvas({
               return out;
             })()
           : /* 单特效预览:HUD 族自锚定;极简族落进左右槽 */
+            (() => {
+              const np = person ? { params, box: false } : nopersonSingle(params, effect);
+              return (
             <CardShell
               cardId={null}
               params={params}
               stageScale={scale}
               fxScale={fxScale}
               animSpeed={animSpeed ?? 1}
+              boxCenter={np.box}
+              npBoost={np.box || np.params !== params ? NOPERSON_BOOST : 1}
               onNudge={onNudge}
               snapCtx={snapCtx}
             >
               {effect.selfPosition ? (
-                <Effect params={params} playToken={playToken} />
+                <Effect params={np.params} playToken={playToken} />
               ) : (
                 <div className={`slot slot-${side}`}>
-                  <Effect params={params} playToken={playToken} />
+                  <Effect params={np.params} playToken={playToken} />
                 </div>
               )}
-            </CardShell>}
+            </CardShell>
+              );
+            })()}
       </div>
     </div>
     </BreathContext.Provider>

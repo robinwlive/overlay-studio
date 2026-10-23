@@ -1,0 +1,96 @@
+/* ============================================================
+   无人物模式 · 构图与底色(默认开启)
+   ------------------------------------------------------------
+   有人出镜时,卡片的落位是在绕开人物:左列贴 120px 边线、右列对称、
+   内容不越人脸线(x700 / x1220),中间那条留给脸和身体。
+   无人物时这套约束全部失去意义 —— 画面里本来就没有主体要避让。
+
+   于是无人物构图的默认原则换成「占中间、更饱满」。具体分三级,
+   判定都在 src/person.ts 里(预览和导出共用,不会各画各的):
+
+     1. 卡片自己支持 center 落位、当时又没和对面成对
+        → 渲染时把落位换成 center。卡宽、字号、进场方向都算成居中版,
+          这才是"饱满"。(person.ts · nopersonPlan 的 center 集)
+     2. 没有 center 选项的卡,只把盒子挑到画布中线
+        → 本文件第 1 节,靠 CardShell 上的 data-np-center 标记
+     3. 左右成对的卡完全不动
+        → 两边都收到中间会叠在一起,分列本来就是作者的意思
+
+   用户手动选过左/右的落位一律尊重(只有仍等于默认值的卡才参与重排)。
+
+   底色:无人物 = 黑底成片。预览和导出必须是同一片黑(第 3 节),
+   否则编辑台看着浅一档、导出来又是一档。有人物出镜完全不受影响:
+   所有规则都挂在 data-person="0" 上。
+   ============================================================ */
+
+/* ---- 1) 次级居中:只挪盒子(卡片不支持 center 落位时的退路) ---- */
+.stage[data-person="0"] [data-np-center="1"] .hud-anchor--left,
+.stage[data-person="0"] [data-np-center="1"] .hud-anchor--right {
+  left: 50%;
+  right: auto;
+  --anchor-tf: translate(-50%, -50%);
+  transform-origin: center center;
+}
+
+/* ---- 1b) 左右成对的卡:两边同时向中间靠一档 ----
+   有人物时中间是脸和身体,两侧卡要贴边;没人物时中间是空的,贴边只会把画面拖成两张孤岛。
+   成对的卡不能两张都收中(会叠),所以做“对称内收”:左边 +96px、右边 -96px。
+   用 margin 而不重写 transform:锚点的 transform 里绑着每张卡自己的微调量和缩放,
+   重写一次就得把那些变量也抄一遍,还容易和段容器里的 zoom 打架。
+   卡片自己收中(1 节或 JS 换 center 落位)时把这段内收归零,不再叠加。 */
+.stage[data-person="0"] .hud-anchor--left {
+  margin-left: 96px;
+}
+.stage[data-person="0"] .hud-anchor--right {
+  margin-right: 96px;
+}
+.stage[data-person="0"] [data-np-center="1"] .hud-anchor--left {
+  margin-left: 0;
+}
+.stage[data-person="0"] [data-np-center="1"] .hud-anchor--right {
+  margin-right: 0;
+}
+/* 段容器内的成员是竖排流式布局,靠 zoom 缩放,不吃这一套 */
+.stage[data-person="0"] .seg-stack .hud-anchor {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* ---- 2) 槽位(不吃锚点的极简族):居中并放宽到 1400px ---- */
+.stage[data-person="0"] .slot {
+  left: 0;
+  right: 0;
+  width: auto;
+  margin: 0 260px;
+  justify-content: center;
+  transform-origin: center center;
+}
+
+/* ---- 3) 底色:预览与成片同一片黑 ----
+   hud.css 给 .stage.is-hud 铺了一层 --hud-canvas 渐变(那是"叠在原片上"的观感),
+   无人物模式下成片底色是纯黑,预览要是还铺渐变,导出来就会和编辑台差一截。
+   选择器比 .stage.is-hud / .stage.is-export 都更具体,不用跟 !important 抢顺序。 */
+.stage[data-person="0"],
+.stage[data-person="0"].is-hud,
+.stage[data-person="0"].is-export {
+  background: #000 !important;
+}
+
+/* 导出页整页黑底:截图是 omitBackground=false,页面本身必须是不透明的黑,
+   否则画面边缘会拿到浏览器默认的白。 */
+.export-mode.export-black,
+.export-mode.export-black body,
+.export-mode.export-black #root {
+  background: #000 !important;
+}
+
+/* ---- 4) 预览边框:黑底上那条 1px 亮边不是成片内容,去掉 ---- */
+.stage[data-person="0"] {
+  border-color: transparent;
+}
+
+/* ---- 5) 无人物时失效的开关:画出来但按不动 ---- */
+.tb-prefs-row .switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

@@ -104,7 +104,8 @@ interface TopBarProps {
   onUnifyAccent: (accent: string) => void;
   showGuides: boolean;
   onToggleGuides: () => void;
-  showPerson: boolean;
+  /** 人物出镜模式:true = 有人出镜(透明层叠原片);false = 无人物黑底成片(默认) */
+  person: boolean;
   onTogglePerson: () => void;
 }
 
@@ -226,7 +227,7 @@ export function TopBar({
   onUnifyAccent,
   showGuides,
   onToggleGuides,
-  showPerson,
+  person,
   onTogglePerson,
 }: TopBarProps) {
   const { prefsOpen, prefsRef, popRef, btnRef, openPrefs, pos } = usePrefsPopover();
@@ -452,11 +453,16 @@ export function TopBar({
               </div>
 
               <div className="tb-prefs-row">
-                <span>安全区参考线</span>
+                <span title="只在有人物出镜时才有意义:那几条线是给人物让位的边界">
+                  安全区参考线
+                </span>
                 <button
                   className={`switch ${showGuides ? "is-on" : ""}`}
                   role="switch"
                   aria-checked={showGuides}
+                  /* 无人物时没有安全区可言,开关留在那儿但按不动,免得点了没反应 */
+                  disabled={!person}
+                  title={person ? "画出人物安全区/左列脊柱/右列槽位" : "无人物模式下不画参考线(没有人物要避让)"}
                   onClick={onToggleGuides}
                 >
                   <span className="switch-knob" />
@@ -464,12 +470,19 @@ export function TopBar({
               </div>
 
               <div className="tb-prefs-row">
-                <span>人物占位</span>
+                <span title="关:无人物,导出黑底成片,卡片居中饱满。开:有人出镜,导出透明动效层,叠进剪映">
+                  人物出镜
+                </span>
                 <button
-                  className={`switch ${showPerson ? "is-on" : ""}`}
+                  className={`switch ${person ? "is-on" : ""}`}
                   role="switch"
-                  aria-checked={showPerson}
+                  aria-checked={person}
                   onClick={onTogglePerson}
+                  title={
+                    person
+                      ? "当前:有人出镜 —— 导出透明动效层(MOV/WebM),在剪映里叠在原片上层"
+                      : "当前:无人物 —— 导出黑底成片(MP4),构图居中饱满,不用再合成"
+                  }
                 >
                   <span className="switch-knob" />
                 </button>
@@ -514,7 +527,7 @@ export function TopBar({
         </button>
         {tab === "edit" && (
           <button className="tb-btn tb-btn--primary" onClick={onExport} disabled={exporting}>
-            {exporting ? "导出中…" : "⬇ 导出透明 MOV"}
+            {exporting ? "导出中…" : person ? "⬇ 导出透明 MOV" : "⬇ 导出黑底成片"}
           </button>
         )}
       </div>

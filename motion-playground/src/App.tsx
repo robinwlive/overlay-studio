@@ -15,6 +15,7 @@ import { parseOverlay, type OverlayCard, type OverlayDoc } from "./overlay/types
 import { parseSrt, type SrtLine } from "./overlay/srt";
 import { lintOverlay, mergeLintConfig, type LintConfig, type LintIssue } from "./overlay/lint";
 import { uploadErrText } from "./uploadErr";
+import { isPerson, nopersonPlan } from "./person";
 import lintDefaults from "../lint-rules.default.json";
 
 // 个人阈值(lint-rules.local.json,gitignore):存在就叠加覆盖公共默认
@@ -28,6 +29,7 @@ const LINT_CFG = mergeLintConfig(
 );
 import "./effects/hud/hud.css";
 import "./App.css";
+import "./noperson.css";
 
 /** 新卡默认多长:整段演示类的卡要 15 秒才够看完一轮,其余 5 秒。
     右栏那颗「加到 x:xx,时长 n 秒」按钮和真正的插入逻辑共用这一个数,
@@ -46,7 +48,26 @@ export default function App() {
   );
   const [playToken, setPlayToken] = useState(0);
   const [showGuides, setShowGuides] = useState(true);
-  const [showPerson, setShowPerson] = useState(true);
+  /* 人物出镜模式(默认关 = 无人物黑底成片):
+     - 开:导出透明动效层,拖进剪映盖在原片上(原来的用法)
+     - 关:导出黑底成片,画面没有主体,构图按「占中间、更饱满」排(noperson.css)
+     开关状态记在浏览器里,同时写进编排 JSON(doc.person),导出端只读那一份。 */
+  const PERSON_KEY = "overlayStudioPerson";
+  const [person, setPerson] = useState(() => {
+    try {
+      return localStorage.getItem(PERSON_KEY) === "1";
+    } catch {
+      return false; // 隐私模式:本次会话按默认(无人物)
+    }
+  });
+  const setPersonMode = (next: boolean) => {
+    setPerson(next);
+    try {
+      localStorage.setItem(PERSON_KEY, next ? "1" : "0");
+    } catch {
+      /* 隐私模式:只在本次会话生效 */
+    }
+  };
   // 导入的本地视频(object URL):编辑台=停在首帧等播放;效果库=静音循环当背景
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   // 视频落盘期间锁住导入按钮。以前这里没有任何状态:传一条几百 MB 的口播要几十秒,
@@ -65,7 +86,7 @@ export default function App() {
   const [animSpeed, setAnimSpeed] = useState(1);
   // 特效整体缩放(1 = 100%)
   const [fxScale, setFxScale] = useState(1);
-  // 导出透明动效层
+  // 导出(黑底成片 / 透明动效层,由人物开关决定)
   const [exporting, setExporting] = useState(false);
   // 导出进度(每秒轮询 /api/export-status)
   const [exportProg, setExportProg] = useState<{
@@ -241,6 +262,9 @@ export default function App() {
         if (dropped?.length)
           console.warn("恢复上次编排时跳过了认不出的卡:", dropped.map((d) => `${d.kind}×${d.n}`).join(", "));
         setOverlay(migrated ?? saved.overlay);
+        // 存档里带人物标记(旧存档 JSON)就跟着开人物开关:只往「有"那一侧对齐,
+        // 不自动关 —— 不能因为一份老编排没写这个字段就把开关静默改掉。
+        if (isPerson(migrated ?? saved.overlay)) setPersonMode(true);
         originRef.current = saved.origin ?? null;
         if (Array.isArray(saved.srt) && saved.srt.length) setSrt(saved.srt);
         setSelCardId(saved.overlay.cards[0]?.id ?? null);
@@ -272,6 +296,15 @@ export default function App() {
     if (camClearedRef.current) return;
     setOverlay((o) => (o && !o.cam ? { ...o, cam: videoUrl } : o));
   }, [overlay, videoUrl]);
+
+  // 人物开关 → 编排 JSON(doc.person)。导出端只读 doc,所以开关一改就得落进编排里,
+  // 否则会出现「界面说无人物,导出的却是透明层」这种对不上的情况。
+  // 依赖里带上 overlay?.person:导入/恢复一份自带 person 的编排时也能对齐。
+  useEffect(() => {
+    setOverlay((o) =>
+      o && (o.person === true) !== person ? { ...o, person: person ? true : undefined } : o,
+    );
+  }, [person, overlay?.person]);
 
   // 任何改动后 800ms 自动落盘;删空卡片则清掉存档
   useEffect(() => {
@@ -341,6 +374,16 @@ export default function App() {
     undoRef.current.push(structuredClone(snapRef.current));
     applySnap(redoRef.current.pop()!);
   };
+
+  // 无人物构图计划:整份编排一次算好 —— 左右成对的卡保持分列,孤零零站一侧的收到中间。
+  // 有人物模式不参与重排(空集),和以前完全一致。
+  const noperson = useMemo(
+    () =>
+      person || !overlay
+        ? { center: new Set<string>(), box: new Set<string>() }
+        : nopersonPlan(overlay.cards, EFFECTS),
+    [person, overlay?.cards],
+  );
 
   // 编辑台总时长 = max(视频时长, 最后一张卡结束)
   const duration = useMemo(() => {
@@ -523,6 +566,7 @@ export default function App() {
     pushHistory(true);
     camClearedRef.current = false; // 新编排:口播视频该挂还得挂
     setOverlay(doc);
+    if (isPerson(doc)) setPersonMode(true); // 编排自带人物标记时跟着开
     originRef.current = structuredClone(doc); // AI 初选快照,学习闭环用
     setSelCardId(doc.cards[0]?.id ?? null);
     setTab("edit");
@@ -599,6 +643,7 @@ export default function App() {
       camClearedRef.current = false;
       setSrt(lines.length ? lines : null);
       setOverlay(doc);
+      if (isPerson(doc)) setPersonMode(true);
       originRef.current = structuredClone(doc);
       setSelCardId(doc.cards[0]?.id ?? null);
       setTab("edit");
@@ -915,6 +960,9 @@ export default function App() {
       // 白白多出整整一秒空帧(卡片走到 end 就卸掉了,尾巴里什么都没有)。
       const body = {
         doc: overlay,
+        // 底色/构图由人物开关决定:无人物 = 黑底成片(默认),有人物 = 透明动效层。
+        // doc.person 里也有一份(已经同步),这里显式再给一次,脚本优先读它。
+        person,
         scale: fxScale,
         speed: animSpeed,
         fps: EXPORT_FPS,
@@ -931,20 +979,24 @@ export default function App() {
       // 失败原因,当成"线上版"会把这条信息直接丢掉,用户和你都不知道到底为什么失败。
       if (!(res.headers.get("content-type") ?? "").includes("json")) {
         alert(
-          "🌐 当前是线上试玩版,不支持导出。\n\n导出透明 MOV 需要在本地运行:\n  git clone 仓库 → npm install → npm run dev\n\n完整步骤见 README「快速开始」。",
+          "🌐 当前是线上试玩版,不支持导出。\n\n导出成片(黑底 MP4 / 透明 MOV)需要在本地运行:\n  git clone 仓库 → npm install → npm run dev\n\n完整步骤见 README「快速开始」。",
         );
         return;
       }
       const data = await res.json();
       if (data.ok) {
         if ("Notification" in window && Notification.permission === "granted")
-          new Notification("✅ 动效层导出完成", {
-            body: data.mov ? `MOV 已就绪:${String(data.mov).split("/").pop()}` : "PNG 序列已就绪",
+          new Notification("✅ 导出完成", {
+            body: data.video
+              ? `黑底成片已就绪:${String(data.video).split("/").pop()}`
+              : data.mov
+                ? `透明层已就绪:${String(data.mov).split("/").pop()}`
+                : "PNG 序列已就绪",
           });
-        if (!data.mov) {
+        if (!data.mov && !data.video) {
           alert(
-            "⚠️ 只导出了 PNG 序列,没有生成 MOV。\n\n" +
-              "原因:本机没有装 ffmpeg(合成透明视频要用它)。\n\n" +
+            "⚠️ 只导出了 PNG 序列,没有合成视频。\n\n" +
+              "原因:本机没有装 ffmpeg(合成成片要用它)。\n\n" +
               "装好之后重新导出即可:\n" +
               "  macOS:   brew install ffmpeg\n" +
               "  Windows: winget install --id Gyan.FFmpeg -e\n\n" +
@@ -953,6 +1005,7 @@ export default function App() {
           return;
         }
         const files = [
+          data.video ? `🎬 黑底成片(无人物,直接发):\n${data.video}` : null,
           data.mov ? `🎞 透明 MOV(剪映直接拖):\n${data.mov}` : null,
           data.webm ? `🌐 透明 WebM(小体积):\n${data.webm}` : null,
           `🖼 PNG 序列 ${data.frames} 帧 @ ${data.fps}fps`,
@@ -1153,8 +1206,8 @@ export default function App() {
         }}
         showGuides={showGuides}
         onToggleGuides={() => setShowGuides((v) => !v)}
-        showPerson={showPerson}
-        onTogglePerson={() => setShowPerson((v) => !v)}
+        person={person}
+        onTogglePerson={() => setPersonMode(!person)}
       />
       <div className="app-body">
       <Sidebar
@@ -1170,6 +1223,7 @@ export default function App() {
         animSpeed={animSpeed}
         onAnimSpeed={setAnimSpeed}
         exporting={exporting}
+        person={person}
         overlay={overlay}
         selCardId={selCardId}
         onGlobalTheme={handleGlobalTheme}
@@ -1202,7 +1256,8 @@ export default function App() {
           params={params}
           playToken={playToken}
           showGuides={showGuides}
-          showPerson={showPerson}
+          person={person}
+          noperson={noperson}
           videoUrl={videoUrl}
           fxScale={fxScale}
           overlayCards={inEdit ? activeCards : null}
@@ -1357,6 +1412,9 @@ function ExportProgress({
       const fmt =
         eta >= 60 ? `${Math.floor(eta / 60)} 分 ${eta % 60} 秒` : `${eta} 秒`;
       text = `渲染帧 ${prog.frame}/${prog.total} · 预计还需 ${fmt}`;
+    } else if (prog.stage === "mp4") {
+      pct = 88;
+      text = "合成黑底成片 MP4(长视频这步要几分钟)…";
     } else if (prog.stage === "mov") {
       pct = 84;
       text = "合成透明 MOV(长视频这步要几分钟)…";

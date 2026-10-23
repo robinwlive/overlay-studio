@@ -46,6 +46,10 @@ export interface OverlayDoc {
   breath?: boolean;
   /** 全局口播视频(H264):运镜卡 camSrc 留空时导出统一用它,按时间轴自动对位 */
   cam?: string;
+  /** 人物出镜模式:true = 有人出镜,导出透明动效层叠在原片上;
+   *  缺省/false = 无人物(默认),导出黑底成片,构图按「占中间、更饱满」排。
+   *  见 src/person.ts —— 画布、导出、UI 开关都只认这一个字段。 */
+  person?: boolean;
   /** 全局字体(src/assets/fonts/ 里的文件名):空 = 默认 IBM Plex Sans SC */
   font?: string;
   /** 全局文字色:盖住主题自带的 --hud-ink(主文字),次要文字自动按同色降透明度。
@@ -119,6 +123,8 @@ export function parseOverlay(raw: unknown): {
         glow: o.glow === true,
         breath: o.breath === true ? true : undefined,
         cam: typeof o.cam === "string" && o.cam ? o.cam : undefined,
+        // 只有显式 true 才算「有人出镜」;没写 = 无人物(默认黑底成片)
+        person: o.person === true ? true : undefined,
         font: typeof o.font === "string" && o.font ? o.font : undefined,
         inkColor: typeof o.inkColor === "string" && /^#[0-9a-fA-F]{3,8}$/.test(o.inkColor) ? o.inkColor : undefined,
         cards,

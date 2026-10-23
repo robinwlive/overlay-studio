@@ -33,6 +33,8 @@ interface SidebarProps {
   animSpeed: number;
   onAnimSpeed: (v: number) => void;
   exporting: boolean;
+  /** 人物出镜模式:false(默认)= 黑底成片,true = 透明动效层 */
+  person: boolean;
   overlay: OverlayDoc | null;
   selCardId: string | null;
   /** 全局底色:一键统一所有卡片亮/暗 */
@@ -74,6 +76,7 @@ export function Sidebar({
   animSpeed,
   onAnimSpeed,
   exporting,
+  person,
   overlay,
   selCardId,
   onGlobalTheme,
@@ -576,7 +579,11 @@ export function Sidebar({
         {tab === "edit" && (
         <div className="export-row">
           <button className="export-btn" onClick={onExport} disabled={exporting}>
-            {exporting ? "⏳ 导出中…请稍候" : "⬇ 导出整条时间轴(透明)"}
+            {exporting
+              ? "⏳ 导出中…请稍候"
+              : person
+                ? "⬇ 导出整条时间轴(透明层)"
+                : "⬇ 导出整条时间轴(黑底成片)"}
           </button>
         </div>
         )}

@@ -6,12 +6,17 @@ import { EFFECTS } from "./effects/registry";
 import { FxSpeedScope } from "./effects/FxSpeedScope";
 import { outroFade, parseOverlay, type OverlayDoc } from "./overlay/types";
 import { STAGE } from "./stage";
+import { isPerson, nopersonPlan, NOPERSON_BOOST } from "./person";
 import "./effects/hud/hud.css";
 import "./App.css";
+import "./noperson.css";
 
 /**
  * 导出专用视图(?export=1)
- * 只渲染动效本体:透明背景、无视频、无人物、无参考线、无UI。
+ * 只渲染动效本体:无视频、无人物、无参考线、无UI。
+ * 底色跟着 doc.person 走:
+ *   person=true  → 透明(omitBackground 截图),MOV 拖进剪映盖在原片上
+ *   person=false → 黑底(默认),导出即完整成片,不用再合成
  * 渲染整条时间轴(&doc=<overlay json>),卡片按 start/end 出现;
  * 动效在导出脚本调用 window.__startExport() 后才开始,
  * 无头浏览器用「虚拟时间」从 t=0 逐帧精确推进。
@@ -27,6 +32,7 @@ function renderCard(
   },
   fxScale: number,
   jobSpeed: number,
+  np: { center: Set<string>; box: Set<string> },
   t?: number,
   cam?: string,
 ) {
@@ -36,11 +42,21 @@ function renderCard(
   const side = (card.params.side as string) ?? "left";
   // __start:让卡内视频知道自己相对整条时间轴的起点
   // __t/__end:让时间感知卡(章节条/字幕层)拿到时间轴当前秒和自己的终点
-  const params: Record<string, unknown> = { ...card.params, __start: card.start ?? 0, __t: t, __end: card.end };
+  const params: Record<string, unknown> = {
+    // 无人物时能真居中的卡换成 center(与 Canvas 预览同一套计划,导出不会各画各的)
+    ...(np.center.has(card.id)
+      ? { ...card.params, [card.params.side != null ? "side" : "position"]: "center" }
+      : card.params),
+    __start: card.start ?? 0,
+    __t: t,
+    __end: card.end,
+  };
   // 运镜卡的口播:单卡没传就用全局口播(doc.cam),按时间轴自动对位
   if (cam && !params.camSrc) params.camSrc = cam;
-  // 每卡缩放/倍速 × 全局值,和 Studio 预览一致
-  const scale = fxScale * (Number(card.params.scale) || 1);
+  // 每卡缩放/倍速 × 全局值,和 Studio 预览一致。
+  // 无人物时,收到中间的卡同预览一样放大一档(成对的卡不放大)
+  const solo = np.center.has(card.id) || np.box.has(card.id);
+  const scale = fxScale * (Number(card.params.scale) || 1) * (solo ? NOPERSON_BOOST : 1);
   const speed = jobSpeed * (Number(card.params.speed) || 1);
   // 讲过变浅:时间轴过了 dimAt 秒后整卡压暗让位(仍在场,不退场)
   const dimAt = Number(card.params.dimAt) || 0;
@@ -60,6 +76,8 @@ function renderCard(
       }}
       /* 逐卡主题:与 Studio 预览一致 */
       data-card-theme={(card.params.theme as string) || undefined}
+      /* 无人物构图:只把盒子挑到中线(见 noperson.css) */
+      data-np-center={np.box.has(card.id) ? "1" : undefined}
       data-past={past ? "1" : undefined}
       data-outro={outro < 1 ? "1" : undefined}
       data-dim-mode={(card.params.dimMode as string) || undefined}
@@ -92,6 +110,16 @@ const stageStyle = (scale: number) => {
 /** 整条时间轴导出:虚拟时钟推进,卡片按时间窗挂载/卸载 */
 function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number; speed: number }) {
   const [t, setT] = useState(-1);
+  // 人物出镜模式:决定底色(黑/透明)和卡片构图。与 Studio 预览走同一个判定
+  const person = isPerson(doc);
+  // 无人物构图计划:一次性算好整份编排(左右成对的卡不动、能真居中的居中),与预览一致
+  const np = useState(() => (person ? { center: new Set<string>(), box: new Set<string>() } : nopersonPlan(doc.cards, EFFECTS)))[0];
+
+  // 导出页整页底色跟着模式走:透明模式交给 omitBackground(页面须透明),
+  // 黑底模式页面必须是不透明的黑 —— 否则截图边缘会拿到浏览器默认的白。
+  useEffect(() => {
+    document.documentElement.classList.toggle("export-black", !person);
+  }, [person]);
 
   useEffect(() => {
     (window as unknown as { __startExport: () => void }).__startExport = () => {
@@ -129,7 +157,7 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
   const seen = new Set<string>();
   for (const c of active) {
     if (!c.seg) {
-      rendered.push(renderCard(c, scale, speed, t, doc.cam));
+      rendered.push(renderCard(c, scale, speed, np, t, doc.cam));
       continue;
     }
     if (seen.has(c.seg)) continue;
@@ -140,11 +168,19 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
       <div
         key={`seg-${c.seg}`}
         className="seg-stack"
-        style={{
-          transform: `translate(${Number(head.params.offsetX) || 0}px, ${Number(head.params.offsetY) || 0}px)`,
-        }}
+        style={
+          // 与 Canvas 预览同一套:无人物时段容器收到中线(noperson.css 没法覆盖内联 transform)
+          person
+            ? {
+                transform: `translate(${Number(head.params.offsetX) || 0}px, ${Number(head.params.offsetY) || 0}px)`,
+              }
+            : {
+                left: "50%",
+                transform: `translate(calc(-50% + ${Number(head.params.offsetX) || 0}px), ${Number(head.params.offsetY) || 0}px)`,
+              }
+        }
       >
-        {members.map((m) => renderCard(m, scale, speed, t, doc.cam))}
+        {members.map((m) => renderCard(m, scale, speed, np, t, doc.cam))}
       </div>,
     );
   }
@@ -153,6 +189,8 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
       <div
         className={`stage is-hud is-export${doc.glow ? "" : " no-glow"}`}
         data-theme={doc.theme ?? "dark"}
+        /* 与预览同一个构图原则:data-person=0 → 占中间、更饱满(noperson.css) */
+        data-person={person ? "1" : "0"}
         style={{
           ...stageStyle(scale),
           ...(doc.font ? { ["--hud-font" as string]: `"${doc.font}"` } : {}),

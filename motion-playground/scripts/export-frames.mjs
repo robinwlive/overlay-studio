@@ -38,7 +38,10 @@ const {
 const person = typeof jobPerson === "boolean" ? jobPerson : doc?.person === true;
 const ALPHA = person; // true = 透明动效层;false = 黑底成片
 
-const STAGE = { w: 1920, h: 1080 };
+// 画幅:16:9 横屏 1920×1080 / 9:16 竖屏 1080×1920(单列构图)。
+// 编排里写了 stage 就照它走,没写默认横屏。
+const portrait = doc?.stage === "9:16";
+const STAGE = portrait ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 };
 
 // NTSC 29.97 的真身是 30000/1001(=29.970029970…),写成小数会有微小误差:
 // 帧号/时钟用精确值算,传给 ffmpeg 的帧率用分数字符串,避免它按 2997/100 编码

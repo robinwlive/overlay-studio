@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -35,7 +36,7 @@ const PP_INK = "#141418";
 const PP_F0 = 46; // 参考作品字号;药丸其余尺寸都按 字号/46 等比
 const PP_FMIN = 30; // 正文字号下限
 const PP_SAFE = 0.96;
-const PP_FACE_X = 700; // 横版人脸左缘约 720,左锚点卡不越过这条线(右锚点对称)
+const ppFaceX = () => leftFaceLimit(); // 人脸左缘约 720,左锚点卡不越过这条线(右锚点对称)
 const PP_V_MARGIN = 48;
 const PP_CHROME_EM = 144 / 46; // 行内非文字部分:左内边距 10 + 圆章 72 + 间距 24 + 右内边距 38
 const PP_SEP_EM = 1.0; // 分隔点「·」连左右 14px 外边距的估算宽(em)
@@ -84,19 +85,19 @@ function ppTokens(text: string): PpTok[] {
 /** 卡片(缩放前 CSS 像素)最大宽:按画幅、锚点、缩放、水平偏移推算。
  *  横版人脸线只按默认位置(offsetX=0)算:手动拖开卡宽锁住,不再越拖越窄;拖开后只防出画(离边 PP_V_MARGIN) */
 function ppMaxWidth(position: string, scale: number, ox: number) {
-  const SW = 1920;
+  const SW = STAGE.w;
   const s = Math.max(0.2, scale);
   const edge = 120; // 锚点离边 120px
   if (position === "top-left") {
     // transform-origin 左上:左缘 = 120 + ox
     const frame = (SW - PP_V_MARGIN - edge - ox) / s;
-    return Math.min(PP_FACE_X - edge, frame); // 人脸线只按默认大小(scale=1)算,拉大就真的变大
+    return Math.min(ppFaceX() - edge, frame); // 人脸线只按默认大小(scale=1)算,拉大就真的变大
   }
   if (position === "top-right") {
     // 从右边缘缩放(根元素 transformOrigin right):右缘固定 SW-120+ox,左缘 = 右缘 − W·s
     const within = (o: number, limitX: number, s: number) => (SW - edge + o - limitX) / s;
     // 人脸线只按默认大小(scale=1)、默认位置算;出画用真实 scale / offset
-    return Math.min(within(0, SW - PP_FACE_X, 1), within(ox, PP_V_MARGIN, s));
+    return Math.min(within(0, SW - ppFaceX(), 1), within(ox, PP_V_MARGIN, s));
   }
   const m = edge;
   return (SW - 2 * Math.abs(ox) - 2 * m) / s;

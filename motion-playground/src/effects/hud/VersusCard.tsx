@@ -1,3 +1,4 @@
+import { STAGE, isPortrait } from "../../stage";
 import type { CSSProperties } from "react";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
@@ -134,7 +135,7 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
   const { aKicker, aTitle, aSub, aAccent, bKicker, bTitle, bSub, winner } = params;
   const tp = params as VersusCardParams & { __t?: number; __start?: number; __end?: number; scale?: number; __scale?: number };
   const tRaw = useCardElapsed(tp, playToken);
-   const SW = 1920;
+   const SW = STAGE.w;
   const end = tp.__end;
   // 有 __end 才退场:卡片时长 = __end − __start,最后 0.5s 收走;没有就一直停着
   const D = typeof end === "number" ? Math.max(0, end - (tp.__start ?? 0)) : Infinity;
@@ -147,27 +148,38 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
   // ── 排版:卡宽默认 520(参考作品),内容长就加宽到安全区为止,再不够就换行、缩字号 ──
   const s = Math.max(0.2, (Number(tp.scale) || 1) * (Number(tp.__scale) || 1));
   const ox = params.offsetX ?? 0;
-  const maxTotal = (SW - 96 - 2 * Math.abs(ox)) / s; // 整组不出画,左右各留 48
+  // 竖屏:1080 宽放不下并排两块 → 改成上下叠(A 上、B 下),单卡占满可用宽
+  const portrait = isPortrait();
+  const maxTotal = portrait ? (SW - 96 - 2 * Math.abs(ox)) / s : (SW - 96 - 2 * Math.abs(ox)) / s;
   const need = (k: string, ti: string, no: string, role: VsRole) =>
     Math.max(vsTextW(k, 26, 0.12) + 32 + (role === "win" ? VS_CHECK : 0), vsTextW(ti, 68, 0.02), vsTextW(no, 28, 0.04)) +
     VS_PAD * 2;
   const W = Math.round(
-    Math.max(240, Math.min(Math.max(VS_W, need(aKicker, aTitle, aSub, roleA), need(bKicker, bTitle, bSub, roleB)), (maxTotal - VS_GAP) / 2)),
+    portrait
+      ? Math.max(240, Math.min(Math.max(VS_W, need(aKicker, aTitle, aSub, roleA), need(bKicker, bTitle, bSub, roleB)), maxTotal))
+      : Math.max(240, Math.min(Math.max(VS_W, need(aKicker, aTitle, aSub, roleA), need(bKicker, bTitle, bSub, roleB)), (maxTotal - VS_GAP) / 2)),
   );
   const LA = vsLayout(aKicker, aTitle, aSub, roleA, W);
   const LB = vsLayout(bKicker, bTitle, bSub, roleB, W);
   const H = Math.max(LA.h, LB.h);
-  const totalW = W * 2 + VS_GAP;
+  const totalW = portrait ? W : W * 2 + VS_GAP;
+  // 竖屏纵向间距:两卡之间留 96 给 VS 圆标
+  const VS_GAP_V = 96;
+  const totalH = portrait ? H * 2 + VS_GAP_V : H;
   // 纵向:整组放进安全带;放不下就整体再缩(k),胜方弹大时往上多留 4%
-  const [bandTop, bandBottom] = VS_BAND;
+  const [bandTop, bandBottom] = portrait ? [120, STAGE.h - 320] : VS_BAND;
   // 安全带(躲脸)只按默认大小算:用户拉大就真的变大;按真实大小只防出画(上下各留 48,放不下才整体缩)
-  const SH = 1080;
+  const SH = STAGE.h;
   const oy = params.offsetY ?? 0;
-  const k1 = Math.min(1, (bandBottom - bandTop) / (H * 1.04));
-  const k = Math.min(k1, (SH - 96) / (H * 1.04 * s));
-  const bottomAt = (sv: number, kv: number) => bandTop + H * sv * kv * 1.04 + oy;
+  // 竖屏:整组是两卡叠起来,组高 = totalH(不是单卡高)
+  const groupH = portrait ? totalH : H;
+  const k1 = Math.min(1, (bandBottom - bandTop) / (groupH * 1.04));
+  const k = Math.min(k1, (SH - 96) / (groupH * 1.04 * s));
+  const bottomAt = (sv: number, kv: number) => bandTop + groupH * sv * kv * 1.04 + oy;
   // 拉大后往下长到出画时整组往上挪(默认大小时不挪)
-  const cy = bandTop + H * s * k * 0.52 - Math.max(0, bottomAt(s, k) - Math.max(SH - 48, bottomAt(1, k1)));
+  const cy = bandTop + groupH * s * k * 0.52 - Math.max(0, bottomAt(s, k) - Math.max(SH - 48, bottomAt(1, k1)));
+  // 竖屏:整组在安全带里垂直居中(top 直接给组顶,不再叠加锚点的 -50%)
+  const groupTop = bandTop + Math.max(0, (bandBottom - bandTop - groupH * s * k) / 2) + oy;
 
   // ── 时间轴(照搬 renderAt) ──
   const exitK = Number.isFinite(D) ? vsInCubic(vsProg(t, D - VS_OUT, D)) : 0;
@@ -213,20 +225,23 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
     // 进场:左卡先、右卡晚 0.18s(参考作品的两条弹簧)
     const inK = which === "a" ? vsSpring(vsClamp(t / 1.0, 0, 1), 1.15, 0.62) : vsSpring(vsClamp((t - 0.18) / 1.0, 0, 1), 1.1, 0.6);
     const fadeIn = which === "a" ? vsProg(t, 0, 0.35) : vsProg(t, 0.18, 0.5);
-    const left = which === "a" ? 0 : W + VS_GAP;
-    const origin = which === "a" ? "100% 50%" : "0% 50%"; // 都以靠 VS 的内侧边为缩放原点
+    // 横屏:左右并排;竖屏:上下叠(靠 VS 的内侧边 = 下边/上边)
+    const left = portrait ? 0 : which === "a" ? 0 : W + VS_GAP;
+    const top = portrait ? (which === "a" ? 0 : H + VS_GAP_V) : 0;
+    const origin = portrait ? (which === "a" ? "50% 100%" : "50% 0%") : which === "a" ? "100% 50%" : "0% 50%";
 
-    let x = dir * 90 * (1 - inK) + dir * 60 * exitK;
-    let y = 24 * exitK;
+    // 竖屏:进场方向改成上下,左右位移归零
+    let x = portrait ? 0 : dir * 90 * (1 - inK) + dir * 60 * exitK;
+    let y = portrait ? (which === "a" ? -(90 * (1 - inK) + 60 * exitK) : 90 * (1 - inK) + 60 * exitK) : 24 * exitK;
     let sc = vsLerp(0.92, 1, inK);
     let op = fadeIn * (1 - exitE);
     if (role === "lose") {
       const shake = t > 0.6 && t < 1.25 ? vsJitter(t, 1.3) * 3 * (1 - vsProg(t, 0.6, 1.25)) : 0;
-      x += dir * 10 * weak + shake;
+      x += portrait ? 0 : dir * 10 * weak + shake;
       sc *= vsLerp(1, 0.93, weak);
       op *= vsLerp(1, 0.82, weak);
     } else if (role === "win") {
-      x += dir * 10 * win;
+      x += portrait ? 0 : dir * 10 * win;
       y += -6 * win - 3 * breathe;
       sc *= vsLerp(1, 1.06, win) * (1 + breathe * 0.006);
     }
@@ -238,7 +253,7 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
         <div
           key={which}
           style={{
-            position: "absolute", left, top: 0, width: W, height: H, borderRadius: 28, boxSizing: "border-box",
+            position: "absolute", left, top, width: W, height: H, borderRadius: 28, boxSizing: "border-box",
             background: "rgba(26,26,30,0.80)", border: "1.5px solid rgba(255,255,255,0.10)",
             boxShadow: "0 18px 40px rgba(0,0,0,0.28)", transformOrigin: origin, transform: tf,
             opacity: op, filter: ["", `saturate(${vsLerp(1, 0.35, weak).toFixed(3)})`].join(" ").trim(),
@@ -269,7 +284,7 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
     // 亮卡(胜方 / 都不)
     const isWin = role === "win";
     return (
-      <div key={which} style={{ position: "absolute", left, top: 0, width: W, height: H, transformOrigin: origin, transform: tf, opacity: op }}>
+      <div key={which} style={{ position: "absolute", left, top, width: W, height: H, transformOrigin: origin, transform: tf, opacity: op }}>
         {isWin && (
           // 外圈光晕:跟着卡走
           <div
@@ -356,14 +371,18 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
       style={{
         ["--hud-acc" as string]: ACCENT_VAR[aAccent] ?? ACCENT_VAR.green,
         ...offsetVars(params),
-        top: cy,
-        ["--anchor-tf" as string]: "translate(-50%, -50%)",
+        // 竖屏:锚点的 translate(-50%,-50%) 会把整组往上提半组高,叠卡就顶出画面了
+        // → 竖屏改成不用锚点平移(top 直接就是组顶),水平居中交给 left:50% + translateX
+        top: portrait ? groupTop : cy,
+        left: portrait ? "50%" : undefined,
+        right: portrait ? "auto" : undefined,
+        ["--anchor-tf" as string]: portrait ? "translateX(-50%)" : "translate(-50%, -50%)",
         opacity: 1,
       }}
     >
       <div
         style={{
-          position: "relative", width: totalW, height: H, fontFamily: VS_FONT,
+          position: "relative", width: totalW, height: totalH, fontFamily: VS_FONT,
           transform: k < 1 ? `scale(${k.toFixed(4)})` : undefined,
         }}
       >
@@ -371,7 +390,10 @@ function VersusCard({ params, playToken }: EffectProps<VersusCardParams>) {
         {side("b")}
         <div
           style={{
-            position: "absolute", left: totalW / 2 - 48, top: H / 2 - 48, width: 96, height: 96,
+            position: "absolute",
+            left: portrait ? totalW / 2 - 48 : totalW / 2 - 48,
+            top: portrait ? H + VS_GAP_V / 2 - 48 : H / 2 - 48,
+            width: 96, height: 96,
             transform: `scale(${vsS.toFixed(4)}) rotate(${vsLerp(-25, 0, vsOutCubic(vsProg(t, 0.45, 1.0))).toFixed(2)}deg)`,
             opacity: vsProg(t, 0.45, 0.6) * (1 - exitE),
           }}

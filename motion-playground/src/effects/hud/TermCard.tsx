@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -36,7 +37,7 @@ const TP = {
   OUTLEN: 0.5, // 最后 0.5 秒收走
 };
 const T_MONO = '"SF Mono", Menlo, "Helvetica Neue", monospace';
-const T_FACE_X = 700; // 横版人脸左缘约 720,卡不越过这条线(右锚点对称)
+const tFaceX = () => leftFaceLimit(); // 人脸左缘约 720,卡不越过这条线(右锚点对称);竖屏给满宽
 const T_V_MARGIN = 48;
 const T_SAFE = 0.96; // 字宽是估算的,留一点余量
 
@@ -141,8 +142,8 @@ function tDefChars(def: string): TChar[] {
  *  人脸线只按默认大小、默认位置(scale=1、offsetX=0)算:用户拉大或拖开就是自己挑的,卡按比例真变大、
  *  宽度锁住只平移;只有出画这条按真实 scale / offsetX 算(离画面边 T_V_MARGIN)。 */
 function tMaxWidth(_ratio: string, position: string, scale: number, ox: number) {
-  const SW = 1920;
-  const face = SW - T_FACE_X;
+  const SW = STAGE.w;
+  const face = SW - tFaceX();
   return Math.min(tWidthWithin(SW, position, 1, 0, face), tWidthWithin(SW, position, scale, ox, T_V_MARGIN));
 }
 
@@ -197,7 +198,7 @@ function TermCard({ params, playToken }: EffectProps<TermCardParams>) {
   // 竖直方向不出画:卡太高时先整体挪回画内,还放不下再整体缩小(只在内容极长、又放得很大时才会发生)
   const sy = cardScale;
   const anchorCy = 540 + (params.offsetY ?? 0);
-  const stageH = 1080;
+  const stageH = STAGE.h;
   const room = stageH - 48;
   const fitZ = H * sy > room ? room / (H * sy) : 1;
   const halfH = (H * sy * fitZ) / 2;

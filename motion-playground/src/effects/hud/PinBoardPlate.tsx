@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit } from "../../stage";
 import { useId } from "react";
 import type { EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
@@ -18,7 +19,7 @@ type Fit = { fs: number; lines: string[][] };
 
 const MONO = '"SF Mono", Menlo, Consolas, monospace';
 const FONT = 'var(--hud-font, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif)';
-const FACE_X = 700; // 横版人脸左缘约 720:左锚点右缘不越过(右锚点对称 1220)
+const faceX = () => leftFaceLimit(); // 人脸左缘约 720:左锚点右缘不越过(右锚点对称);竖屏给满宽
 const V_MARGIN = 48; // 不出画:离画面边至少 48px
 const SAFE = 0.96; // 字宽是估算的,留一点余量
 const TOP0 = 96; // .hud-anchor--top-left / top-right 离上沿
@@ -114,9 +115,9 @@ const fitW = (f: Fit, ls: number) => Math.max(0, ...f.lines.map((l) => lineW(l, 
 
 /** 卡(缩放前)最大宽:躲脸只按 scale=1、offset=0 算;不出画按真实 scale、offset(右锚点从右缘缩放) */
 function maxWidth(right: boolean, s: number, ox: number) {
-  const SW = 1920;
+  const SW = STAGE.w;
   const within = (sc: number, o: number, limit: number) => (right ? SW - EDGE + o - limit : SW - limit - EDGE - o) / Math.max(0.2, sc);
-  const face = SW - FACE_X;
+  const face = SW - faceX();
   return Math.min(within(1, 0, face), within(s, ox, V_MARGIN));
 }
 
@@ -169,7 +170,7 @@ function PinBoardPlate({ params, playToken }: EffectProps<PinBoardParams>) {
   const plateChrome = L.platePadL + L.numML + numW + L.numMR + L.platePadR;
 
   // ── 竖直方向:放不下先收间距,再收牌高/字号,最后整体缩小 ──
-  const SH = 1080;
+  const SH = STAGE.h;
   const maxH = (SH - V_MARGIN - TOP0 - oy) / Math.max(0.2, s);
   const layout = (tight: number) => {
     const pFs = tight >= 2 ? 30 : L.plateFs;

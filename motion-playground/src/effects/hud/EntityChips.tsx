@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit, rightFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -131,14 +132,14 @@ function eFit(s: string, maxW: number, base: number, oneLineMin: number, min: nu
  * 横版人脸线只按默认位置(offsetX=0)、默认大小(scale=1)算:手动拖开整块宽度锁住,不再越拖越窄;拖开后只防出画(离边 48)。
  */
 function eMaxWidth(position: string, _ratio: string, ox: number, s: number) {
-  const stageW = 1920;
+  const stageW = STAGE.w;
   if (position === "left") {
     const frame = (stageW - 48 - 120 - ox) / s; // 左锚 left:120,缩放原点在左
-    return Math.min(700 - 120, frame);
+    return Math.min(leftFaceLimit() - 120, frame);
   }
   if (position === "right") {
     const frame = (stageW - 120 + ox - 48) / s; // 右锚 right:120,新动效从右边缘缩放:右缘固定,左缘 = 右缘 − W·s 不出画
-    return Math.min(stageW - 120 - 1220, frame);
+    return Math.min(stageW - 120 - rightFaceLimit(), frame);
   }
   return (stageW - 96 - 2 * Math.abs(ox)) / s; // 居中:不出画、左右各留 48
 }

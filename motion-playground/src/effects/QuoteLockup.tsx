@@ -1,3 +1,4 @@
+import { STAGE, rightFaceLimit } from "../stage";
 import type { ReactElement } from "react";
 import type { EffectDef, EffectProps } from "./types";
 import { useCardElapsed } from "./hud/useTimelineTime";
@@ -50,9 +51,9 @@ function qCharEm(c: string) {
 }
 /** 卡片(缩放前)最大宽:不越人脸线(左锚右缘 ≤700,右锚左缘 ≥1220) */
 function qMaxWidth(side: string, scale: number, ox: number) {
-  const SW = 1920;
+  const SW = STAGE.w;
   // 人脸线只按默认大小(scale=1)、默认位置(offsetX=0)算:用户拉大就真的变大、拖开只平移;按真实大小/偏移只防出画(离边 48)
-  return Math.min(qWidthWithin(SW, side, 1, 0, 1220), qWidthWithin(SW, side, scale, ox, 48));
+  return Math.min(qWidthWithin(SW, side, 1, 0, rightFaceLimit()), qWidthWithin(SW, side, scale, ox, 48));
 }
 /** 卡的远端边离远端画面边至少 limit 时的最大宽(横版人脸线 = 1220) */
 function qWidthWithin(SW: number, side: string, scale: number, ox: number, limit: number) {

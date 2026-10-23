@@ -1,3 +1,4 @@
+import { STAGE, rightFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -168,7 +169,7 @@ function spxFootChars(s: string): SpxChar[] {
         按锚点的缩放原点把 scale / offsetX 一起算进去。
     横版人脸线只按默认位置(offsetX=0)算:手动拖开后卡宽锁住只平移,拖动后只防出画(离画面边 48) */
 function spxMaxW(position: string, s: number, ox: number) {
-  const SW = 1920;
+  const SW = STAGE.w;
   const M = 48;
   const left = position === "left" || position === "top-left";
   if (!left && position !== "right" && position !== "top-right") {
@@ -176,7 +177,7 @@ function spxMaxW(position: string, s: number, ox: number) {
     return (SW - 2 * M - 2 * Math.abs(ox)) / s;
   }
   // 人脸线只按默认大小(scale=1)算:用户拉大就真的变大,只防出画(真实 scale / offset)
-  return Math.min(spxWidthWithin(SW, left, 1, 0, 1220), spxWidthWithin(SW, left, s, ox, M));
+  return Math.min(spxWidthWithin(SW, left, 1, 0, rightFaceLimit()), spxWidthWithin(SW, left, s, ox, M));
 }
 
 /** 卡的远端边不越过离画面边 limit 的那条线时,允许的最大宽 */

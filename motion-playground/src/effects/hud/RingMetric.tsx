@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit, rightFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -170,16 +171,17 @@ function RingMetricView({ params, t: tRaw }: { params: RingMetricParams; t: numb
   // 只有不出画(离画面边 48)按真实 scale / offsetX 算
   const s = Number((params as { scale?: number }).scale) || 1;
   const ox = params.offsetX ?? 0;
-  const stageW = 1920;
+  const stageW = STAGE.w;
+  const stageH = STAGE.h;
   const pos = position === "left" || position === "right" ? position : "center";
   // 左锚点从左边缘缩放、右锚点从右边缘缩放(右缘固定在 stageW−120+x,往左长),居中从中心
   const centerX = (w: number, sc: number, x: number) =>
     pos === "left" ? 120 + x + (w * sc) / 2 : pos === "right" ? stageW - 120 + x - (w * sc) / 2 : stageW / 2 + x;
   let k = 1;
   // 横版居中也不许压脸:按默认落点归到左/右安全带(正中归左,照参考作品放左侧)
-  const [lo, hi] = centerX(RP_W, 1, 0) <= 960 ? [48, 700] : [1220, 1872];
+  const [lo, hi] = centerX(RP_W, 1, 0) <= stageW / 2 ? [48, leftFaceLimit()] : [rightFaceLimit(), stageW - 48];
   k = Math.min(k, (hi - lo) / RP_W, (stageW - 96) / (RP_W * s));
-  k = Math.min(k, ((1080) - 48) / (H * s)); // 竖直方向不出画(上下各留 24)
+  k = Math.min(k, ((stageH) - 48) / (H * s)); // 竖直方向不出画(上下各留 24)
   const Wl = RP_W * k;
   const Hl = H * k;
   // 先按默认大小、默认位置挪进安全带,再按真实大小和位置防出画

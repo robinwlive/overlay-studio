@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit, rightFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import { ACCENT_SWATCH, OFFSET_CONTROLS, OFFSET_DEFAULTS, offsetVars, THEME_OPTIONS } from "./accent";
@@ -184,10 +185,10 @@ function Terminal3D({ params, playToken }: EffectProps<Terminal3DParams>) {
   const s = Math.max(0.2, (Number(ex.scale) || 1) * (Number(ex.__scale) || 1));
   const ox = params.offsetX ?? 0;
   const oy = params.offsetY ?? 0;
-  const SW = 1920;
-  const SH = 1080;
+  const SW = STAGE.w;
+  const SH = STAGE.h;
   const within = (sc: number, x: number, limit: number) => (right ? (SW - 120 + x - limit) / sc : (SW - limit - 120 - x) / sc);
-  const maxW = Math.min(within(1, 0, right ? 1220 : SW - 700), within(s, ox, 48));
+  const maxW = Math.min(within(1, 0, right ? rightFaceLimit() : SW - leftFaceLimit()), within(s, ox, 48));
   const side = (k: TpKind, f: number) => (k === "❯" ? Math.round(f * 2.3) : 0); // ❯ 行右侧留给转圈 / 用时
   const natW = (f: number) => 44 + Math.round((f * 34) / 28) + Math.max(0, ...L.map((r) => tpWidth(r.cs, f) + side(r.k, f))) + 4;
   const W = Math.round(Math.max(Math.min(maxW, 400), Math.min(maxW, Math.max(TP_W, natW(28)))));

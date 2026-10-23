@@ -94,3 +94,57 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   竖屏(9:16)· 单列构图
+   ------------------------------------------------------------
+   竖屏没有「左右分列」这回事:1080 宽里放不下并排两块。
+   所有侧向锚点一律收到中线,段落容器和槽位也照同样规矩;
+   字幕层收窄到 900,长句正常换行。
+   ============================================================ */
+.stage[data-aspect="9:16"] .hud-anchor--left,
+.stage[data-aspect="9:16"] .hud-anchor--right {
+  left: 50%;
+  right: auto;
+  --anchor-tf: translate(-50%, -50%);
+  transform-origin: center center;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.stage[data-aspect="9:16"] .hud-anchor--top-left,
+.stage[data-aspect="9:16"] .hud-anchor--top-right {
+  left: 50%;
+  right: auto;
+  top: 96px;
+  --anchor-tf: translateX(-50%);
+  transform-origin: center top;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.stage[data-aspect="9:16"] .slot {
+  left: 0;
+  right: 0;
+  width: auto;
+  margin: 0 64px;
+  justify-content: center;
+  transform-origin: center center;
+}
+
+/* 字幕层:竖屏可用宽只有 1080,1500 的 max-width 等于没设 */
+.stage[data-aspect="9:16"] .ctrack-cue {
+  max-width: 900px;
+}
+
+/* 竖屏补充:引号卡的 transform-origin 是内联的 "right center"(内联样式优先级高于类),
+   缩放时以右缘为轴,居中后就会往左偏出去 → 竖屏强制改成中心为轴。
+   内联样式没有 !important,所以这里用 !important 压得住。 */
+.stage[data-aspect="9:16"] .hud-anchor {
+  transform-origin: center center !important;
+}
+
+/* 竖屏:底部药丸和字幕层都要让位(字幕在 bottom 44,药丸默认 bottom 120 会压上去) */
+.stage[data-aspect="9:16"] .hud-anchor--bottom {
+  bottom: 420px;
+}

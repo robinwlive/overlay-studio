@@ -16,6 +16,7 @@ import { parseSrt, type SrtLine } from "./overlay/srt";
 import { lintOverlay, mergeLintConfig, type LintConfig, type LintIssue } from "./overlay/lint";
 import { uploadErrText } from "./uploadErr";
 import { isPerson, nopersonPlan } from "./person";
+import { setStage, type StageAspect } from "./stage";
 import lintDefaults from "../lint-rules.default.json";
 
 // 个人阈值(lint-rules.local.json,gitignore):存在就叠加覆盖公共默认
@@ -60,6 +61,27 @@ export default function App() {
       return false; // 隐私模式:本次会话按默认(无人物)
     }
   });
+  /* 画幅:16:9 横屏 / 9:16 竖屏。和人物开关一样记在浏览器里,同时写进编排(doc.stage),
+     导出端只读那一份。竖屏 = 单列构图(1080×1920),手机上第一屏就是这个比例。 */
+  const STAGE_KEY = "overlayStudioStage";
+  const [aspect, setAspectState] = useState<StageAspect>(() => {
+    try {
+      return localStorage.getItem(STAGE_KEY) === "9:16" ? "9:16" : "16:9";
+    } catch {
+      return "16:9";
+    }
+  });
+  const setAspect = (next: StageAspect) => {
+    setAspectState(next);
+    setStage(next);
+    try {
+      localStorage.setItem(STAGE_KEY, next);
+    } catch {
+      /* 隐私模式:本次会话生效 */
+    }
+  };
+  setStage(aspect); // 渲染前切好,卡片读 STAGE 时就是对的
+
   const setPersonMode = (next: boolean) => {
     setPerson(next);
     try {
@@ -265,6 +287,7 @@ export default function App() {
         // 存档里带人物标记(旧存档 JSON)就跟着开人物开关:只往「有"那一侧对齐,
         // 不自动关 —— 不能因为一份老编排没写这个字段就把开关静默改掉。
         if (isPerson(migrated ?? saved.overlay)) setPersonMode(true);
+        if ((migrated ?? saved.overlay)?.stage === "9:16") setAspect("9:16");
         originRef.current = saved.origin ?? null;
         if (Array.isArray(saved.srt) && saved.srt.length) setSrt(saved.srt);
         setSelCardId(saved.overlay.cards[0]?.id ?? null);
@@ -305,6 +328,13 @@ export default function App() {
       o && (o.person === true) !== person ? { ...o, person: person ? true : undefined } : o,
     );
   }, [person, overlay?.person]);
+
+  // 画幅 → doc.stage 同理(导出端只读 doc)
+  useEffect(() => {
+    setOverlay((o) =>
+      o && (o.stage ?? "16:9") !== aspect ? { ...o, stage: aspect === "9:16" ? "9:16" : undefined } : o,
+    );
+  }, [aspect, overlay?.stage]);
 
   // 任何改动后 800ms 自动落盘;删空卡片则清掉存档
   useEffect(() => {
@@ -382,7 +412,7 @@ export default function App() {
       person || !overlay
         ? { center: new Set<string>(), box: new Set<string>() }
         : nopersonPlan(overlay.cards, EFFECTS),
-    [person, overlay?.cards],
+    [person, overlay?.cards, aspect],
   );
 
   // 编辑台总时长 = max(视频时长, 最后一张卡结束)
@@ -567,6 +597,7 @@ export default function App() {
     camClearedRef.current = false; // 新编排:口播视频该挂还得挂
     setOverlay(doc);
     if (isPerson(doc)) setPersonMode(true); // 编排自带人物标记时跟着开
+    if (doc.stage === "9:16") setAspect("9:16");
     originRef.current = structuredClone(doc); // AI 初选快照,学习闭环用
     setSelCardId(doc.cards[0]?.id ?? null);
     setTab("edit");
@@ -644,6 +675,7 @@ export default function App() {
       setSrt(lines.length ? lines : null);
       setOverlay(doc);
       if (isPerson(doc)) setPersonMode(true);
+      if (doc.stage === "9:16") setAspect("9:16");
       originRef.current = structuredClone(doc);
       setSelCardId(doc.cards[0]?.id ?? null);
       setTab("edit");
@@ -1208,6 +1240,8 @@ export default function App() {
         onToggleGuides={() => setShowGuides((v) => !v)}
         person={person}
         onTogglePerson={() => setPersonMode(!person)}
+        aspect={aspect}
+        onAspect={(a) => setAspect(a)}
       />
       <div className="app-body">
       <Sidebar
@@ -1257,6 +1291,7 @@ export default function App() {
           playToken={playToken}
           showGuides={showGuides}
           person={person}
+          aspect={aspect}
           noperson={noperson}
           videoUrl={videoUrl}
           fxScale={fxScale}

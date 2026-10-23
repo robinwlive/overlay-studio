@@ -1,3 +1,4 @@
+import { STAGE, isPortrait, leftFaceLimit, rightFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import type { CSSProperties } from "react";
 import { useCardElapsed } from "./useTimelineTime";
@@ -191,17 +192,19 @@ function BlurText({ params, playToken }: EffectProps<BlurTextParams>) {
   const s = Math.max(0.2, (Number(extra.scale) || 1) * (Number(extra.__scale) || 1));
   const ox = params.offsetX ?? 0;
   const oy = params.offsetY ?? 0;
-  const SW = 1920;
-  const SH = 1080;
+  const SW = STAGE.w;
+  const SH = STAGE.h;
+  // 竖屏没有「人脸下方那条带」:center 就是画面正中
+  const bandTop = isPortrait() ? 0 : 712;
   const cx = SW / 2 + ox;
   // 人脸线 / 脸下方那条带只按默认大小、默认位置(scale=1、offset=0)算:手动拖开或拉大排版锁住,
   // 拖开只平移、拉大就真变大;只有出画按真实 scale 和 offset 算
   const cx0 = SW / 2;
   // 横版居中会压脸:整块挪到人脸下方,上缘挂在 y=712(锚点改成顶挂、绕上缘中点缩放),offset 照常叠加
-  const below = position === "center";
+  const below = position === "center" && !isPortrait();
   const box = (H: number, oyv = oy, sv = s) => {
     let cy: number;
-    if (below) cy = 712 + oyv + (H * sv) / 2;
+    if (below) cy = bandTop + oyv + (H * sv) / 2;
     else if (position === "top") cy = 110 + oyv + H / 2;
     else if (position === "bottom") cy = SH - 120 + oyv - H / 2;
     else cy = SH / 2 + oyv;
@@ -211,12 +214,12 @@ function BlurText({ params, playToken }: EffectProps<BlurTextParams>) {
   const frameHalf = Math.min(cx - 48, SW - 48 - cx); // 出画:真实位置
   const faceHalf = (H: number) => {
     const { topE, botE } = box(H, 0, 1);
-    if (topE < 700 && botE > 80) {
-      if (cx0 - 1220 >= 160) return cx0 - 1220;
-      if (700 - cx0 >= 160) return 700 - cx0;
+    if (!isPortrait() && topE < leftFaceLimit() && botE > 80) {
+      if (cx0 - rightFaceLimit() >= 160) return cx0 - rightFaceLimit();
+      if (leftFaceLimit() - cx0 >= 160) return leftFaceLimit() - cx0;
       return 500;
     }
-    return Infinity;
+    return Infinity; // 竖屏:整幅可用,没有脸要让
   };
   const fits = (L: { W: number; H: number }) => {
     const { topE, botE } = box(L.H);
@@ -225,7 +228,7 @@ function BlurText({ params, playToken }: EffectProps<BlurTextParams>) {
     // 脸下方那条带(底边离画面底 ≥ 40)按默认大小/位置排;拉大/拖动后快出画在下面整块上移、再缩小
     if (below ? d.botE > SH - 40 : topE < m || botE > SH - m) return false;
     // 横版正对人脸那一列(挪不到脸侧)时,上缘不越过 y=700,压不开就继续缩
-    if (cx0 - 1220 < 160 && 700 - cx0 < 160 && d.topE < 700 && d.botE > 80) return false;
+    if (!isPortrait() && cx0 - rightFaceLimit() < 160 && leftFaceLimit() - cx0 < 160 && d.topE < leftFaceLimit() && d.botE > 80) return false;
     return L.W / 2 <= Math.max(60, faceHalf(L.H)) * 0.99 && (L.W * s) / 2 <= Math.max(60, frameHalf) * 0.99;
   };
   type BpL = NonNullable<ReturnType<typeof bpLayout>>;
@@ -248,12 +251,12 @@ function BlurText({ params, playToken }: EffectProps<BlurTextParams>) {
   const { rows, W, H } = lay as BpL;
   // 脸下方那条带(712~1040)最小字号也放不下:最后才整块缩小
   // 拉大 / 拖动后快出画(按真实 scale、offset):先整块挪回画内(底离画面底 40、顶离画面顶 24),还放不下再缩小
-  const fitK = below ? Math.min(1, (1080 - 40 - 712) / H, (1080 - 40 - 24) / (H * s)) : 1;
-  const bTop = 712 + oy;
+  const fitK = below ? Math.min(1, (SH - 40 - bandTop) / H, (SH - 40 - 24) / (H * s)) : 1;
+  const bTop = bandTop + oy;
   const bBot = bTop + H * s * fitK;
-  const liftY = !below ? 0 : bBot > 1080 - 40 ? bBot - (1080 - 40) : bTop < 24 ? bTop - 24 : 0;
+  const liftY = !below ? 0 : bBot > SH - 40 ? bBot - (SH - 40) : bTop < 24 ? bTop - 24 : 0;
   const anchorFix = below
-    ? ({ top: 712, bottom: "auto", ["--anchor-tf" as string]: "translateX(-50%)", transformOrigin: "50% 0" } as CSSProperties)
+    ? ({ top: bandTop, bottom: "auto", ["--anchor-tf" as string]: "translateX(-50%)", transformOrigin: "50% 0" } as CSSProperties)
     : null;
   const z = rows[0].F / BP_SPEC[rows[0].kind].font;
 

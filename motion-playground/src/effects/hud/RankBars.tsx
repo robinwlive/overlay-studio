@@ -1,3 +1,4 @@
+import { STAGE, rightFaceLimit } from "../../stage";
 import type { CSSProperties } from "react";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
@@ -38,7 +39,7 @@ const RB_EXIT = 0.5; // 最后 0.5 秒收走
 const RB_T_ROW0 = 0.55; // 第一条开始
 const RB_BAR_DUR = 0.9;
 const RB_SAFE = 0.96; // 字宽是估算的,留一点余量
-const RB_FACE_W = 1920 - 120 - 1220; // 横版左右锚点:卡宽不越过人脸线(左锚右缘 ≤ x700 / 右锚左缘 ≥ x1220)
+const rbFaceW = () => STAGE.w - 120 - rightFaceLimit(); // 左右锚点卡宽上限(竖屏给满宽)
 const RB_MARGIN = 48; // 出画底线:离画面边 48
 const RB_BASE_W = 500; // 参考作品的底板宽
 const RB_PL = 40;
@@ -204,14 +205,14 @@ function RankBars({ params, playToken }: EffectProps<RankBarsParams>) {
   const s = Math.max(0.2, (Number(extra.scale) || 1) * (Number(extra.__scale) || 1));
   const ox = params.offsetX ?? 0;
   const oy = params.offsetY ?? 0;
-  const SW = 1920;
-  const SH = 1080;
+  const SW = STAGE.w;
+  const SH = STAGE.h;
   const onStage = extra.centerOnStage === true; // 「换卡居中」交给 hud.css 的中心缩放
   const side = onStage ? "center" : position === "right" ? "right" : "left";
   const frameW =
     side === "left" ? (SW - RB_MARGIN - 120 - ox) / s : side === "right" ? (SW - 120 + ox - RB_MARGIN) / s : (SW - 2 * RB_MARGIN - 2 * Math.abs(ox)) / s;
-  const faceW = onStage ? Infinity : RB_FACE_W;
-  const maxW = Math.min(faceW, frameW, RB_FACE_W); // 版宽最多 580
+  const faceW = onStage ? Infinity : rbFaceW();
+  const maxW = Math.min(faceW, frameW, rbFaceW()); // 版宽上限(横屏 580)
   // 宽度跟着内容走:短内容保持参考作品的 500,名字长就往宽里让,到上限再换行/缩字
   const z0Lay = rbLayout(list, String(title ?? "").trim(), unit, lead, RB_BASE_W, z);
   const need = Math.max(

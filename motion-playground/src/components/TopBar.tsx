@@ -1,6 +1,7 @@
 import { VERSION_LABEL, VERSION_TITLE } from "../version";
 import { PROMO_URL } from "../promo";
 import { useEffect, useRef, useState } from "react";
+import type { StageAspect } from "../stage";
 import { createPortal } from "react-dom";
 import { ACCENT_OPTIONS } from "../effects/hud/accent";
 import { CUSTOM_FONTS } from "../fonts";
@@ -107,6 +108,9 @@ interface TopBarProps {
   /** 人物出镜模式:true = 有人出镜(透明层叠原片);false = 无人物黑底成片(默认) */
   person: boolean;
   onTogglePerson: () => void;
+  /** 画幅:16:9 横屏 / 9:16 竖屏(竖屏 = 单列构图) */
+  aspect: StageAspect;
+  onAspect: (a: StageAspect) => void;
 }
 
 function usePrefsPopover() {
@@ -229,6 +233,8 @@ export function TopBar({
   onToggleGuides,
   person,
   onTogglePerson,
+  aspect,
+  onAspect,
 }: TopBarProps) {
   const { prefsOpen, prefsRef, popRef, btnRef, openPrefs, pos } = usePrefsPopover();
   const meterRef = useMeterFit();
@@ -467,6 +473,21 @@ export function TopBar({
                 >
                   <span className="switch-knob" />
                 </button>
+              </div>
+
+              <div className="tb-prefs-row">
+                <span title="改的是成片尺寸:横屏 1920×1080 / 竖屏 1080×1920。竖屏是单列构图(手机第一屏)">
+                  画幅
+                </span>
+                <select
+                  className="tb-prefs-ctl"
+                  value={aspect}
+                  onChange={(e) => onAspect(e.target.value === "9:16" ? "9:16" : "16:9")}
+                  title="竖屏(9:16)会把侧向锚点全部收到中线、字幕收窄到 900 —— 1080 宽放不下并排两块"
+                >
+                  <option value="16:9">▭ 横屏 16:9</option>
+                  <option value="9:16">▯ 竖屏 9:16</option>
+                </select>
               </div>
 
               <div className="tb-prefs-row">

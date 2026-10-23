@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit } from "../../stage";
 import { useId } from "react";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
@@ -57,7 +58,7 @@ const tpSpring = (t: number, dur = 0.62) => {
 
 /* 安全区:左锚点右缘 ≤ 700、右锚点左缘 ≥ 1220。字宽用估算(导出逐帧确定),靠 TP_SAFE 留余量。 */
 const TP_SAFE = 0.96;
-const TP_FACE_X = 700;
+const tpFaceX = () => leftFaceLimit();
 const TP_V_MARGIN = 48;
 const TP_FONT = 'var(--hud-font, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif)';
 const tpIsWide = (c: string) => (c.codePointAt(0) ?? 0) >= 0x2e80;
@@ -73,11 +74,11 @@ function tpCharEm(c: string) {
 /** 卡片(缩放前)最大宽:按画幅、锚点、卡片大小、水平偏移推算。
  *  横版人脸线只按默认位置(offsetX=0)算:手动拖开后卡宽锁住只平移,只防出画(离画面边 TP_V_MARGIN) */
 function tpMaxWidth(position: string, scale: number, ox: number) {
-  const SW = 1920;
+  const SW = STAGE.w;
   const s = Math.max(0.2, scale);
   if (position === "left" || position === "right") {
     // 人脸线只按默认大小(scale=1)、默认位置算:用户拉大就真的变大(盖脸是自己选的);按真实大小/偏移只防出画
-    return Math.min(tpWidthWithin(SW, position, 1, 0, SW - TP_FACE_X), tpWidthWithin(SW, position, s, ox, TP_V_MARGIN));
+    return Math.min(tpWidthWithin(SW, position, 1, 0, SW - tpFaceX()), tpWidthWithin(SW, position, s, ox, TP_V_MARGIN));
   }
   return (2 * (SW / 2 - Math.abs(ox) - (60))) / s;
 }
@@ -175,8 +176,9 @@ function TypeShift({ params, playToken }: EffectProps<TypeShiftParams>) {
   const extra = params as { scale?: number; __scale?: number };
   const cardScale = (Number(extra.scale) || 1) * (Number(extra.__scale) || 1);
   const maxW = tpMaxWidth(position, cardScale, params.offsetX ?? 0) * TP_SAFE;
-  const cyAnchor = 540 + (params.offsetY ?? 0);
-  const maxH = (2 * Math.min(1080 - 30 - cyAnchor, cyAnchor - 30)) / cardScale;
+  const SH = STAGE.h;
+  const cyAnchor = Math.round(STAGE.h / 2) + (params.offsetY ?? 0);
+  const maxH = (2 * Math.min(SH - 30 - cyAnchor, cyAnchor - 30)) / cardScale;
   const FS0 = 96;
   const FMIN = 44;
   const fitAt = (F: number, mode: "none" | "two" | "greedy") => {

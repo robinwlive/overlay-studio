@@ -1,3 +1,4 @@
+import { STAGE, isPortrait, leftFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useId, type CSSProperties } from "react";
 import { useCardElapsed } from "./useTimelineTime";
@@ -41,7 +42,7 @@ const OD_STEP_DEG = 48;
 const OD_SPIN = 1.35; // 个位落位时刻(参考作品 SPIN_D)
 const OD_STAGGER = 0.12; // 往高位每位晚落
 const OD_EXIT = 0.5;
-const OD_FACE_X = 700; // 横版人脸左缘约 720
+const odFaceX = () => leftFaceLimit(); // 人脸左缘约 720(竖屏给满宽)
 const OD_V_MARGIN = 48; // 左右至少离画面边
 const OD_INK = "#F4EFE9";
 /** 鼓轮位置(格):起步咬合加速 → 长减速冲过一点 → 落位机械回弹 */
@@ -89,11 +90,11 @@ function odFit(text: string, F0: number, minF: number, avail: number, emOf: (c: 
  *  人脸线 / 人脸下方的版面宽只按默认大小、默认位置(scale=1、offsetX=0)算:拉大就真的变大,拖开卡宽锁住只平移;
  *  出画(离画面边 OD_V_MARGIN)按真实 scale、offsetX 算 */
 function odMaxWidth(position: string, scale: number, ox: number) {
-  const SW = 1920;
+  const SW = STAGE.w;
   const s = Math.max(0.2, scale);
   const frame = (SW - 2 * OD_V_MARGIN - 2 * Math.abs(ox)) / s;
   if (position === "center") return Math.min(580, frame);
-  return Math.min(odWidthWithin(SW, position, 1, 0, SW - OD_FACE_X), odWidthWithin(SW, position, s, ox, OD_V_MARGIN));
+  return Math.min(odWidthWithin(SW, position, 1, 0, SW - odFaceX()), odWidthWithin(SW, position, s, ox, OD_V_MARGIN));
 }
 /** 左/右锚点:远端边不越过离画面边 limit 的线时的最大宽 */
 function odWidthWithin(SW: number, position: string, s: number, ox: number, limit: number) {
@@ -168,18 +169,20 @@ function Odometer({ params, playToken }: EffectProps<OdometerParams>) {
     const labH = lab ? G.labGap + lab.lines.length * lab.F * (lab.lines.length > 1 ? 1.3 : 1) : 0;
     return G.top + eyeH + read + G.ruleGap + 2 + labH + G.bot;
   };
+  const SH = STAGE.h;
+  const bandTop = isPortrait() ? 0 : 712;
   // 人脸下方的高只按默认大小(scale=1)算;拉大后快出画就整块往上挪(盖脸是用户自己选的),挪到顶还放不下才整体缩小
-  const maxH = 1080 - 40 - 712 - 6; // 6 = 落位轻震余量
+  const maxH = SH - 40 - bandTop - 6; // 6 = 落位轻震余量
   if (below) while (u > 0.19 && cardH(u) > maxH) u = Math.max(0.19, u - 0.01);
   if (below) unitF = unitFAt(u);
   let fit = below ? Math.min(1, maxH / cardH(u)) : 1;
   let guardY = 0; // 屏幕像素
   if (below) {
-    const room = 1080 - 40 - 40 - 6;
+    const room = SH - 40 - 40 - 6;
     if (cardH(u) * fit * cardScale > room) fit = room / (cardH(u) * cardScale);
     const top = 712 + (params.offsetY ?? 0);
     const bot = top + cardH(u) * fit * cardScale + 6;
-    if (bot > 1080 - 40) guardY = 1080 - 40 - bot;
+    if (bot > SH - 40) guardY = SH - 40 - bot;
     if (top + guardY < 40) guardY = 40 - top;
   }
   const HW = (66 + 150 * n) * u; // 机匣宽

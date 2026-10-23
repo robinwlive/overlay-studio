@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit, rightFaceLimit } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -122,11 +123,12 @@ function ckFit(s: string, maxW: number, base: number, oneLineMin: number, min: n
 function ckMaxWidth(position: string, ox: number, s: number) {
   if (position === "right") {
     // 锚点 right:120,缩放原点在右边:右缘固定在 1920−120+ox,左边缘 = 右缘 − W·s
-    const face = 1920 - 120 - 1220; // 人脸线按 scale=1、ox=0:左缘 = 1800 − W ≥ 1220
-    return Math.min(face, (1920 - 120 + ox - 48) / s);
+    // 人脸线按 scale=1、ox=0 算:左缘 = 右锚 120 − W ≥ 右极限
+    const face = STAGE.w - 120 - rightFaceLimit();
+    return Math.min(face, (STAGE.w - 120 + ox - 48) / s);
   }
   // left / top-left:锚点 left:120,缩放原点在左边
-  return Math.min(700 - 120, (1920 - 48 - 120 - ox) / s);
+  return Math.min(leftFaceLimit() - 120, (STAGE.w - 48 - 120 - ox) / s);
 }
 /** 卡高上限(舞台像素,未乘 scale):上下各留 40 */
 function ckMaxHeight(position: string, oy: number, s: number) {

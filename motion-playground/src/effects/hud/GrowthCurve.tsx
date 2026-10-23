@@ -1,3 +1,4 @@
+import { STAGE, leftFaceLimit } from "../../stage";
 import { useId } from "react";
 import type { CSSProperties } from "react";
 import type { EffectDef, EffectProps } from "../types";
@@ -54,7 +55,7 @@ export interface GrowthCurveParams {
 const GC_FONT = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
 const GC_NUM = '"SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif';
 const GC_MONO = '"SF Mono", "Menlo", "PingFang SC", monospace';
-const GC_FACE_X = 700; // 横版人脸线:左卡右缘 / 右卡左缘(对称)不越过
+const gcFaceX = () => leftFaceLimit(); // 人脸线:左卡右缘 / 右卡左缘(对称)不越过;竖屏给满宽
 const GC_MARGIN = 48;
 const GC_LOW_TOP = 712; // 横版居中:挂到人脸下方
 const GC_LOW_BOTTOM = 1040;
@@ -205,7 +206,7 @@ function GrowthCurve({ params, playToken }: EffectProps<GrowthCurveParams>) {
   const tp = params as GrowthCurveParams & { __start?: number; __end?: number; scale?: number; __scale?: number;  centerOnStage?: boolean };
   const tRaw = useCardElapsed(tp, playToken);
   const gid = useId().replace(/:/g, "");
-    const SW = 1920, SH = 1080;
+    const SW = STAGE.w, SH = STAGE.h;
   // 有 __end 才退场:卡片时长 = __end − __start,最后 0.5s 收走;没有就一直停着
   const END = typeof tp.__end === "number" ? Math.max(0, tp.__end - (tp.__start ?? 0)) : Infinity;
   const t = Math.max(0, Math.min(END, tRaw));
@@ -224,7 +225,7 @@ function GrowthCurve({ params, playToken }: EffectProps<GrowthCurveParams>) {
     side === "center"
       ? Math.min((SW - 2 * GC_MARGIN) / s, low ? 1300 : Infinity)
       : Math.min(
-          gcWidthWithin(SW, side, 1, 0, SW - GC_FACE_X),
+          gcWidthWithin(SW, side, 1, 0, SW - gcFaceX()),
           gcWidthWithin(SW, side, s, ox, GC_MARGIN),
         );
 
@@ -243,7 +244,7 @@ function GrowthCurve({ params, playToken }: EffectProps<GrowthCurveParams>) {
   const maxW1 =
     side === "center"
       ? Math.min(SW - 2 * GC_MARGIN, low ? 1300 : Infinity)
-      : gcWidthWithin(SW, side, 1, 0, SW - GC_FACE_X);
+      : gcWidthWithin(SW, side, 1, 0, SW - gcFaceX());
   const LW = wide0 ? Math.min(380, maxW1 * 0.97 - (GC_PAD_L + 28 + GC_CW + 36)) : 0;
   const wide = wide0 && LW >= 260; // 太窄横排不下就退回竖排
   const W = wide ? GC_PAD_L + LW + 28 + GC_CW + 36 : 520;

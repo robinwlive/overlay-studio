@@ -3,8 +3,8 @@ import { BreathContext } from "../effects/breath";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { EffectDef } from "../effects/types";
 import { EFFECTS } from "../effects/registry";
-import { STAGE } from "../stage";
-import { nopersonSingle, NOPERSON_BOOST } from "../person";
+import { STAGE, setStage, type StageAspect } from "../stage";
+import { nopersonSingle, NOPERSON_BOOST, PORTRAIT_BOOST, PORTRAIT_CAPTION_BOOST } from "../person";
 import { focusCamGeomAt } from "../effects/hud/camGeom";
 import { outroFade, type OverlayCard } from "../overlay/types";
 import { useEnter } from "../effects/useAnimation";
@@ -13,6 +13,13 @@ import { FxSpeedScope } from "../effects/FxSpeedScope";
 /** 拖拽/滚轮时对卡片参数打补丁;cardId=null 表示单特效预览模式 */
 export type NudgeFn = (cardId: string | null, patch: Record<string, number>) => void;
 
+/** 竖屏下内容卡放大一档(字幕层用小一点的系数,见 person.ts) */
+function portraitBoost(kind: string): number {
+  if (kind === "caption-track") return PORTRAIT_CAPTION_BOOST;
+  if (kind === "chapter-bar") return 1; // 章节条自己按画幅铺满
+  return PORTRAIT_BOOST;
+}
+
 interface CanvasProps {
   effect: EffectDef<any>;
   params: any;
@@ -20,6 +27,8 @@ interface CanvasProps {
   showGuides: boolean;
   /** 人物出镜模式:true = 有人出镜(画人物占位、安全区参考线);false = 无人物黑底构图 */
   person: boolean;
+  /** 画幅:16:9 横屏 / 9:16 竖屏(竖屏 = 单列构图) */
+  aspect: StageAspect;
   /** 无人物构图计划(由 App 算好传入):center = 落位收到中间,box = 只把盒子挑到中线 */
   noperson?: { center: Set<string>; box: Set<string> };
   videoUrl: string | null;
@@ -224,6 +233,7 @@ export function Canvas({
   playToken,
   showGuides,
   person,
+  aspect,
   noperson,
   videoUrl,
   fxScale,
@@ -242,7 +252,8 @@ export function Canvas({
   onNudge,
   onPickCard,
 }: CanvasProps) {
-  // 画布逻辑尺寸:1920×1080
+  // 画布逻辑尺寸跟着画幅走(setStage 是就地改写,渲染前先切好)
+  setStage(aspect);
   const { w: STAGE_W, h: STAGE_H } = STAGE;
   const wrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -306,6 +317,8 @@ export function Canvas({
         data-theme={theme}
         /* 人物出镜与否决定构图原则:data-person=0 → 占中间、更饱满(noperson.css) */
         data-person={person ? "1" : "0"}
+        /* 竖屏(9:16):单列构图,见 noperson.css 末节 */
+        data-aspect={aspect}
         data-pip={pip && pipCard ? pipCard.kind : undefined}
         style={{
           width: STAGE_W,
@@ -431,9 +444,9 @@ export function Canvas({
                     animSpeed={animSpeed ?? 1}
                     boxCenter={noperson?.box.has(card.id)}
                     npBoost={
-                      noperson?.center.has(card.id) || noperson?.box.has(card.id)
+                      (noperson?.center.has(card.id) || noperson?.box.has(card.id)
                         ? NOPERSON_BOOST
-                        : 1
+                        : 1) * portraitBoost(card.kind)
                     }
                     past={(Number(card.params.dimAt) || 0) > 0 && (now ?? 0) >= Number(card.params.dimAt)}
                     outro={outro < 1 ? outro : undefined}
@@ -498,7 +511,7 @@ export function Canvas({
               fxScale={fxScale}
               animSpeed={animSpeed ?? 1}
               boxCenter={np.box}
-              npBoost={np.box || np.params !== params ? NOPERSON_BOOST : 1}
+              npBoost={(np.box || np.params !== params ? NOPERSON_BOOST : 1) * portraitBoost(effect.id)}
               onNudge={onNudge}
               snapCtx={snapCtx}
             >

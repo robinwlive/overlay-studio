@@ -1,5 +1,5 @@
-import type { EffectProps } from "../types";
 import { STAGE } from "../../stage";
+import type { EffectProps } from "../types";
 import { useTimelineTime } from "./useTimelineTime";
 import { ACCENT_VAR, offsetVars } from "./accent";
 import type { ChapterBarParams } from "./ChapterBar";

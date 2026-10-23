@@ -5,8 +5,8 @@ import "./fonts"; // 自定义字体注册:导出端也要有 @font-face,成片�
 import { EFFECTS } from "./effects/registry";
 import { FxSpeedScope } from "./effects/FxSpeedScope";
 import { outroFade, parseOverlay, type OverlayDoc } from "./overlay/types";
-import { STAGE } from "./stage";
-import { isPerson, nopersonPlan, NOPERSON_BOOST } from "./person";
+import { STAGE, setStage, type StageAspect } from "./stage";
+import { isPerson, nopersonPlan, NOPERSON_BOOST, PORTRAIT_BOOST, PORTRAIT_CAPTION_BOOST } from "./person";
 import "./effects/hud/hud.css";
 import "./App.css";
 import "./noperson.css";
@@ -32,6 +32,7 @@ function renderCard(
   },
   fxScale: number,
   jobSpeed: number,
+  aspect: StageAspect,
   np: { center: Set<string>; box: Set<string> },
   t?: number,
   cam?: string,
@@ -56,7 +57,9 @@ function renderCard(
   // 每卡缩放/倍速 × 全局值,和 Studio 预览一致。
   // 无人物时,收到中间的卡同预览一样放大一档(成对的卡不放大)
   const solo = np.center.has(card.id) || np.box.has(card.id);
-  const scale = fxScale * (Number(card.params.scale) || 1) * (solo ? NOPERSON_BOOST : 1);
+  // 竖屏:内容卡放大一档才填得满 1080 宽(字幕层用小一点的系数)
+  const pb = card.kind === "caption-track" ? PORTRAIT_CAPTION_BOOST : card.kind === "chapter-bar" ? 1 : PORTRAIT_BOOST;
+  const scale = fxScale * (Number(card.params.scale) || 1) * (solo ? NOPERSON_BOOST : 1) * (aspect === "9:16" ? pb : 1);
   const speed = jobSpeed * (Number(card.params.speed) || 1);
   // 讲过变浅:时间轴过了 dimAt 秒后整卡压暗让位(仍在场,不退场)
   const dimAt = Number(card.params.dimAt) || 0;
@@ -112,6 +115,9 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
   const [t, setT] = useState(-1);
   // 人物出镜模式:决定底色(黑/透明)和卡片构图。与 Studio 预览走同一个判定
   const person = isPerson(doc);
+  // 画幅:竖屏 = 单列构图,画布 1080×1920。切在渲染之前,卡片读 STAGE 就是对的
+  const aspect: StageAspect = doc.stage === "9:16" ? "9:16" : "16:9";
+  setStage(aspect);
   // 无人物构图计划:一次性算好整份编排(左右成对的卡不动、能真居中的居中),与预览一致
   const np = useState(() => (person ? { center: new Set<string>(), box: new Set<string>() } : nopersonPlan(doc.cards, EFFECTS)))[0];
 
@@ -157,7 +163,7 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
   const seen = new Set<string>();
   for (const c of active) {
     if (!c.seg) {
-      rendered.push(renderCard(c, scale, speed, np, t, doc.cam));
+      rendered.push(renderCard(c, scale, speed, aspect, np, t, doc.cam));
       continue;
     }
     if (seen.has(c.seg)) continue;
@@ -180,7 +186,7 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
               }
         }
       >
-        {members.map((m) => renderCard(m, scale, speed, np, t, doc.cam))}
+        {members.map((m) => renderCard(m, scale, speed, aspect, np, t, doc.cam))}
       </div>,
     );
   }
@@ -191,6 +197,8 @@ function TimelineExport({ doc, scale, speed }: { doc: OverlayDoc; scale: number;
         data-theme={doc.theme ?? "dark"}
         /* 与预览同一个构图原则:data-person=0 → 占中间、更饱满(noperson.css) */
         data-person={person ? "1" : "0"}
+        /* 竖屏(9:16):单列构图,见 noperson.css 末节 */
+        data-aspect={aspect}
         style={{
           ...stageStyle(scale),
           ...(doc.font ? { ["--hud-font" as string]: `"${doc.font}"` } : {}),

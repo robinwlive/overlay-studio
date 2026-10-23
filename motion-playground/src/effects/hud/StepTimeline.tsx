@@ -1,3 +1,4 @@
+import { STAGE, rightFaceLimit } from "../../stage";
 import type { CSSProperties } from "react";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
@@ -24,7 +25,7 @@ const STP_FONT = 'var(--hud-font, "PingFang SC", "Hiragino Sans GB", "Microsoft 
 const STP_MONO = '"SF Mono", Menlo, monospace';
 const STP_EXIT = 0.5;
 const STP_BASE_W = 500; // 参考作品卡宽;内容短时保持这个样子
-const STP_FACE_W = 1920 - 120 - 1220; // 横版左右锚点:卡宽不越过人脸线(580)
+const stpFaceW = () => STAGE.w - 120 - rightFaceLimit(); // 左右锚点卡宽上限(竖屏给满宽)
 const STP_MARGIN = 48; // 出画底线:离画面边 48
 const STP_ROW_X = 24; // 章节行左右内缩
 const STP_NAME_X = 112; // 章节名左缘(行内)
@@ -158,7 +159,7 @@ function StepTimeline({ params, playToken }: EffectProps<StepTimelineParams>) {
   // 右锚从右边缘缩放:右缘固定在 SW−120+ox,左缘 = 右缘 − W·s;左锚从左边缘缩放
   const frameW =
     side === "left" ? (SW - 120 - ox - STP_MARGIN) / s : side === "right" ? (SW - 120 + ox - STP_MARGIN) / s : (SW - 2 * STP_MARGIN - 2 * Math.abs(ox)) / s;
-  const faceW = STP_FACE_W;
+  const faceW = stpFaceW();
   const countT = n ? `· 共 ${n} 部分` : "";
   const tagW = tagT ? stLineW(Array.from(tagT), 21, 4) + 10 + stLineW(Array.from(countT), 21, 4) + 80 : 0;
   const pillW = (txt: string) => (txt ? stLineW(Array.from(txt), 19, 2) + 28 : 0);

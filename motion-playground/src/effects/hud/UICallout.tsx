@@ -1,3 +1,4 @@
+import { STAGE } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useId, type CSSProperties } from "react";
 import { useCardElapsed } from "./useTimelineTime";
@@ -213,7 +214,7 @@ function UICallout({ params, playToken }: EffectProps<UICalloutParams>) {
   // ── 标签宽:只受「不出画」约束(真实 scale / 偏移);圈本身由用户定位,不躲脸 ──
   const s = Math.max(0.2, (Number(extra.scale) || 1) * (Number(extra.__scale) || 1));
   const ox = params.offsetX ?? 0;
-  const SW = 1920;
+  const SW = STAGE.w;
   const Cx = SW / 2 + ox; // 外框中心(缩放原点)的屏幕 x
   // 标签一侧能放多宽(不出画):左侧 = 接点左边到画面左缘,右侧同理
   const roomOf = (left: boolean) =>

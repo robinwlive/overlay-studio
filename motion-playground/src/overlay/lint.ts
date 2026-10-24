@@ -85,6 +85,10 @@ interface SeqSpec {
 
 const SEQ_SPECS: Record<string, SeqSpec[]> = {
   "terminal-3d": [{ step: "__span", list: "lines", sep: "|" }],
+  // 钉板逐条落钉 / 模糊文字逐块浮现:都是"卡内在动的证据",按规范算动作
+  "pin-board": [{ step: "stepMs", list: "items", sep: "|" }],
+  "blur-text": [{ step: "staggerMs", list: "text", sep: "|" }],
+  "stat-proof": [{ step: "countMs", list: "value" }],
   "checklist": [{ step: "stepMs", list: "items", sep: "|" }],
   "entity-chips": [{ step: "stepMs", list: "chips" }],
   "focus-card": [{ step: "stepMs", list: "items", sep: "|" }],
@@ -291,10 +295,25 @@ export function lintOverlay(
     }
   }
 
-  // warn: 长时间无新动作(卡进场和板内行点亮都算动作)
+  // warn: 长时间无新动作(卡进场、板内行点亮、字幕换行都算动作)
+  //
+  // 字幕换行必须计入:常驻字幕层每 2–3 秒换一条,画面从来没"真的不动"过。
+  // 不把它算进来,一根 4 秒的竖屏阈值会把每一句正常停顿都报成缺陷 ——
+  // 结果就是被追着往画面里塞便签,反而更花。
   if (cards.length && QUIET > 0) {
+    const cueStarts: number[] = [];
+    for (const c of cards) {
+      if (c.kind !== "caption-track") continue;
+      const raw = (c.params as { lines?: unknown })?.lines;
+      if (typeof raw !== "string") continue;
+      for (const line of raw.split(/\r?\n/)) {
+        const t = parseFloat(line.split("|")[0] ?? "");
+        if (Number.isFinite(t)) cueStarts.push(t);
+      }
+    }
     const times = cards
       .flatMap((c) => [c.start, ...actionTimes(c)])
+      .concat(cueStarts)
       .sort((x, y) => x - y);
     const lastEnd = Math.max(...cards.map((c) => c.end));
     times.push(lastEnd);

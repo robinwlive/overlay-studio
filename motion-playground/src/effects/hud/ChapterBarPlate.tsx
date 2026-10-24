@@ -1,4 +1,4 @@
-import { STAGE } from "../../stage";
+import { STAGE, isPortrait } from "../../stage";
 import type { EffectProps } from "../types";
 import { useTimelineTime } from "./useTimelineTime";
 import { ACCENT_VAR, offsetVars } from "./accent";
@@ -58,7 +58,7 @@ function textW(s: string, fs: number, ls: number) {
   return w;
 }
 
-export function ChapterBarPlate({ params, playToken }: EffectProps<ChapterBarParams>) {
+function ChapterBarH({ params, playToken }: EffectProps<ChapterBarParams>) {
   const { accent, showProgress, progMode, progAccent, progAlpha, hideAt, theme } = params;
   const { w: SW } = STAGE;
   const tAbs = useTimelineTime(params, playToken); // 章节起始秒、隐藏时段都是时间轴绝对秒
@@ -284,4 +284,151 @@ export function ChapterBarPlate({ params, playToken }: EffectProps<ChapterBarPar
       />
     </div>
   );
+}
+
+/**
+ * 竖屏(9:16)· 章节竖轨
+ *
+ * 横屏是一条横跨顶部的进度条。竖屏顶上是平台状态栏、右侧是互动按钮,
+ * 横向条既挤又和平台 UI 抢位置;改成**左侧一条竖轨**:上→下 = 时间推进。
+ * 章名仍然横排(中文竖排可读性差),只把"轴"竖过来。
+ */
+function ChapterRail({ params, playToken }: EffectProps<ChapterBarParams>) {
+  const { accent, theme } = params;
+  const tAbs = useTimelineTime(params, playToken);
+  const items = parseChapters(params.chapters);
+  if (!items.length) return null;
+  const T = Math.max(0, Number.isFinite(tAbs) ? tAbs : 0);
+  const te = Math.max(0, T - (params.__start ?? 0));
+  const n = items.length;
+
+  const gaps = items.slice(1).map((c, i) => Math.max(0, c.start - items[i].start)).filter((d) => d > 0);
+  const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 30;
+  const lastStart = items[n - 1].start;
+  const end =
+    Number.isFinite(params.__end) && (params.__end as number) > lastStart + 0.5
+      ? (params.__end as number)
+      : lastStart + avgGap;
+  const durs = items.map((c, i) => Math.max(0.1, (i < n - 1 ? items[i + 1].start : end) - c.start));
+
+  // 竖轨几何:轨宽 6,左侧 x=20..26;标签从 x=64 起横排
+  const RAIL_X = 20;
+  const RAIL_W = 6;
+  const TOP = 170;
+  const BOTTOM = 1560;
+  const H = BOTTOM - TOP;
+  const SEG_GAP = 6;
+  const total = durs.reduce((a, b) => a + b, 0) || 1;
+  const usable = H - SEG_GAP * (n - 1);
+  let cursor = 0;
+  const segs = durs.map((d) => {
+    const h = Math.max(24, (usable * d) / total);
+    const y = cursor;
+    cursor += h + SEG_GAP;
+    return { y, h };
+  });
+
+  let cur = 0;
+  for (let i = 0; i < n; i++) if (T >= items[i].start) cur = i;
+  const light = theme === "light" && true;
+  const ink = light ? "20,20,24" : "255,255,255";
+  const accVar = ACCENT_VAR[accent];
+  const enter = easeOutCubic(prog(te, 0, 0.6));
+  const curSeg = segs[cur];
+  const labelY = clamp(curSeg.y + curSeg.h / 2, 0, H);
+
+  return (
+    <div
+      className="hud"
+      style={{
+        ...offsetVars(params),
+        position: "absolute",
+        left: RAIL_X,
+        top: TOP,
+        width: 900,
+        height: H,
+        zIndex: 70,
+        transform: `translateX(${((1 - enter) * -18).toFixed(2)}px)`,
+        opacity: `calc(var(--fx-outro, 1) * ${lerp(0.4, 1, enter).toFixed(4)})`,
+        ["--hud-acc" as string]: accVar,
+        fontFamily: 'var(--hud-font, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif)',
+        pointerEvents: "none",
+      }}
+    >
+      {items.map((c, i) => {
+        const s = segs[i];
+        const p = clamp((T - c.start) / durs[i], 0, 1);
+        const done = i < cur;
+        const isCur = i === cur;
+        return (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: s.y,
+              width: RAIL_W,
+              height: s.h,
+              borderRadius: 3,
+              background: isCur ? `rgba(${ink},0.22)` : `rgba(${ink},${done ? 0.34 : 0.14})`,
+              overflow: "hidden",
+            }}
+          >
+            {(done || isCur) && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: "100%",
+                  height: `${(done ? 1 : p) * 100}%`,
+                  background: accVar,
+                  opacity: isCur ? 0.95 : 0.5,
+                  borderRadius: 3,
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+
+      {/* 当前章标签:横排,贴在当前段中部;不做整条文字,免得竖轨变回"横向条" */}
+      <div
+        style={{
+          position: "absolute",
+          left: 44,
+          top: labelY,
+          transform: `translateY(-50%) translateX(${(1 - enter) * -8}px)`,
+          display: "flex",
+          alignItems: "baseline",
+          gap: 10,
+          whiteSpace: "nowrap",
+          opacity: enter,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: '"SF Mono", Menlo, monospace',
+            fontSize: 22,
+            letterSpacing: "0.08em",
+            color: accVar,
+            fontWeight: 700,
+          }}
+        >
+          {String(cur + 1).padStart(2, "0")}
+        </span>
+        <span style={{ fontSize: 30, fontWeight: 700, letterSpacing: "0.06em", color: `rgba(${ink},0.96)` }}>
+          {items[cur].label}
+        </span>
+        <span style={{ fontFamily: '"SF Mono", Menlo, monospace', fontSize: 18, letterSpacing: "0.06em", color: `rgba(${ink},0.34)` }}>
+          {`${cur + 1}/${n}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 分派:竖屏走竖轨,横屏走原来的顶部横条 */
+export function ChapterBarPlate(props: EffectProps<ChapterBarParams>) {
+  return isPortrait() ? <ChapterRail {...props} /> : <ChapterBarH {...props} />;
 }

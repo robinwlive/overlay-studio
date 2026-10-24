@@ -37,6 +37,9 @@ export interface LintConfig {
   warnDecimalPercent: boolean;
 }
 
+/** 一次成型卡:进场即定型,之后没有分时动作。竖屏里单独长驻 = 画面静止 */
+const STATIC_KINDS = new Set(["punch-pill", "quote-lockup", "stat-proof", "blur-text", "versus-card"]);
+
 export const LINT_DEFAULTS: LintConfig = {
   minDwell: 2,
   dwellExemptKinds: ["chapter-bar", "caption-track"],
@@ -269,8 +272,27 @@ export function lintOverlay(
     }
   }
 
+  // ---- 竖屏(9:16)专属:密度是两层的,换代可以慢,卡内不许静止 ----
+  //   · quiet-gap 阈值收到 4s:竖屏一屏只有一张主卡,空白 10s 就是"画面死了"
+  //   · 一次成型卡(见 STATIC_KINDS)单独超 7s 报警:它进场就定型,后面全在干等
+  const portrait = doc.stage === "9:16";
+  const QUIET = portrait ? Math.min(cfg.maxQuietGap, 4) : cfg.maxQuietGap;
+  if (portrait) {
+    for (const c of cards) {
+      const dur = c.end - c.start;
+      if (STATIC_KINDS.has(c.kind) && dur > 7) {
+        push({
+          level: "warn",
+          cardId: c.id,
+          rule: "static-card",
+          message: `竖屏:${c.kind} 是一次成型卡(进场即定型),单独占了 ${dur.toFixed(1)}s(> 7s)会干等——缩短到 7s 内,或与自带分时的卡(清单/钉板/打字)叠`,
+        });
+      }
+    }
+  }
+
   // warn: 长时间无新动作(卡进场和板内行点亮都算动作)
-  if (cards.length && cfg.maxQuietGap > 0) {
+  if (cards.length && QUIET > 0) {
     const times = cards
       .flatMap((c) => [c.start, ...actionTimes(c)])
       .sort((x, y) => x - y);
@@ -278,12 +300,12 @@ export function lintOverlay(
     times.push(lastEnd);
     for (let i = 1; i < times.length; i++) {
       const gap = times[i] - times[i - 1];
-      if (gap > cfg.maxQuietGap) {
+      if (gap > QUIET) {
         push({
           level: "warn",
           at: times[i - 1],
           rule: "quiet-gap",
-          message: `${times[i - 1].toFixed(1)}s → ${times[i].toFixed(1)}s 之间 ${gap.toFixed(1)}s 没有任何新动作(> ${cfg.maxQuietGap}s)——重要的话要有卡点动效,可补一行或拆细 times`,
+          message: `${times[i - 1].toFixed(1)}s → ${times[i].toFixed(1)}s 之间 ${gap.toFixed(1)}s 没有任何新动作(> ${QUIET}s)——重要的话要有卡点动效,可补一行或拆细 times`,
         });
       }
     }

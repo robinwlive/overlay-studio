@@ -140,11 +140,33 @@
 /* 竖屏补充:引号卡的 transform-origin 是内联的 "right center"(内联样式优先级高于类),
    缩放时以右缘为轴,居中后就会往左偏出去 → 竖屏强制改成中心为轴。
    内联样式没有 !important,所以这里用 !important 压得住。 */
-.stage[data-aspect="9:16"] .hud-anchor {
+.stage[data-aspect="9:16"] .hud-anchor:not(.hud-anchor--top-left):not(.hud-anchor--top-right) {
   transform-origin: center center !important;
 }
 
 /* 竖屏:底部药丸和字幕层都要让位(字幕在 bottom 44,药丸默认 bottom 120 会压上去) */
 .stage[data-aspect="9:16"] .hud-anchor--bottom {
   bottom: 420px;
+}
+
+/* ---- 竖屏便签区:主卡之外只允许这一块小内容 ----
+   规范见 竖屏构图规范.md §1:便签区 x 560–1000 · y 200–460。
+   原先 top-left / top-right 两个角落(横屏习惯)在竖屏统一收到右上这一块,
+   因为主卡占中轴,左上留白没有意义。 */
+.stage[data-aspect="9:16"] .hud-anchor--top-right,
+.stage[data-aspect="9:16"] .hud-anchor--top-left {
+  /* 竖屏:上带内容块居中(y=260),不做贴角;贴角在 1080 宽里必然有一侧被裁 */
+  left: 50%;
+  right: auto;
+  top: 260px;
+  --anchor-tf: translateX(-50%);
+  transform-origin: center top;
+}
+
+/* 竖屏:pin-board 的内层是按"右锚点"排的(inline right:0),外层盒子居中后内容仍贴右边。
+   竖屏统一改成左对齐 —— 居中盒子里贴右读起来像"掉在边上"。 */
+.stage[data-aspect="9:16"] .pbx [data-fx-role="group"] {
+  right: auto !important;
+  left: 0 !important;
+  transform-origin: 0 0 !important;
 }

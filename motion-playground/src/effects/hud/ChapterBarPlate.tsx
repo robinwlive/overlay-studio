@@ -334,8 +334,9 @@ function ChapterRail({ params, playToken }: EffectProps<ChapterBarParams>) {
   const ink = light ? "20,20,24" : "255,255,255";
   const accVar = ACCENT_VAR[accent];
   const enter = easeOutCubic(prog(te, 0, 0.6));
-  const curSeg = segs[cur];
-  const labelY = clamp(curSeg.y + curSeg.h / 2, 0, H);
+  // 标签固定在轨道顶端,不跟着段中心走 ——
+  // 跟着走会撞上"上带内容块"(pin-board 等),竖屏上带就那么一块地方
+  const labelY = 0;
 
   return (
     <div

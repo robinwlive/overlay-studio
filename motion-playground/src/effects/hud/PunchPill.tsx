@@ -1,4 +1,4 @@
-import { STAGE, leftFaceLimit } from "../../stage";
+import { STAGE, leftFaceLimit, isPortrait } from "../../stage";
 import type { EffectDef, EffectProps } from "../types";
 import { useCardElapsed } from "./useTimelineTime";
 import {
@@ -88,6 +88,14 @@ function ppMaxWidth(position: string, scale: number, ox: number) {
   const SW = STAGE.w;
   const s = Math.max(0.2, scale);
   const edge = 120; // 锚点离边 120px
+  if (position === "top-left" || position === "top-right") {
+    // 竖屏:top-* 锚点被 noperson.css 收到画布中线(y=260),不再是贴角 ——
+    // 按"贴角 + 人脸线"算宽度会让胶囊撑到出画。这里按满宽(留右侧平台边界)算。
+    if (isPortrait()) {
+      const m = 64;
+      return (SW - 96 - 2 * Math.abs(ox) - 2 * m) / s;
+    }
+  }
   if (position === "top-left") {
     // transform-origin 左上:左缘 = 120 + ox
     const frame = (SW - PP_V_MARGIN - edge - ox) / s;
@@ -98,6 +106,11 @@ function ppMaxWidth(position: string, scale: number, ox: number) {
     const within = (o: number, limitX: number, s: number) => (SW - edge + o - limitX) / s;
     // 人脸线只按默认大小(scale=1)、默认位置算;出画用真实 scale / offset
     return Math.min(within(0, SW - ppFaceX(), 1), within(ox, PP_V_MARGIN, s));
+  }
+  // 底部居中:竖屏可用宽按满宽算,右侧 960 是平台按钮的硬边界
+  if (isPortrait()) {
+    const m = 64;
+    return (SW - 96 - 2 * Math.abs(ox) - 2 * m) / s;
   }
   const m = edge;
   return (SW - 2 * Math.abs(ox) - 2 * m) / s;
@@ -195,7 +208,18 @@ function PunchPill({ params, playToken }: EffectProps<PunchPillParams>) {
   const cardScale = (Number(extra.scale) || 1) * (Number(extra.__scale) || 1);
   const toks = ppTokens(text || "");
   const maxW = ppMaxWidth(position, cardScale, params.offsetX ?? 0);
-  const { F, lines } = ppLayout(toks, maxW);
+  const laid = ppLayout(toks, maxW);
+  const lines = laid.lines;
+  // 竖屏兜底:兜底排版(最小字号仍放不下)会返回超宽的行 —— 这里按可用宽等比收字号,
+  // 否则胶囊会横穿到右侧平台按钮区(实测 46s 那条 1060px 宽)
+  let F = laid.F;
+  if (isPortrait()) {
+    // 注意:DOM 里整条宽 = 字号 × (非文字部分 + 文字 em) × **外层 --hud-scale**。
+    // ppLayout 只按字号算,漏了外层缩放,所以要在这里把 cardScale 除回去。
+    const ems = Math.max(0, ...lines.map((ln) => ln.reduce((a, i) => a + ppCharEm(toks[i].c), 0)));
+    const rawPx = F * (PP_CHROME_EM + ems); // 与 ppMaxWidth 同口径(已除过 cardScale)
+    if (rawPx > maxW) F = Math.max(PP_FMIN * 0.7, (F * maxW) / rawPx);
+  }
   const u = F / PP_F0;
   const lineEms = lines.map((ln) => ln.reduce((a, i) => a + ppCharEm(toks[i].c), 0));
   const W = F * (PP_CHROME_EM + Math.max(0, ...lineEms)); // 估算整条宽(px),走光行程/展开起点用

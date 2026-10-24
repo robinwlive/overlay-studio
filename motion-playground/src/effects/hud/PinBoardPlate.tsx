@@ -167,7 +167,7 @@ function PinBoardPlate({ params, playToken }: EffectProps<PinBoardParams>) {
   const ox = params.offsetX ?? 0;
   const oy = params.offsetY ?? 0;
   // 竖屏:横屏那 600 宽上限是按"给脸让位"定的,竖屏没有脸要让,放宽到 860(便签区宽)
-  const W = Math.max(280, Math.min(isPortrait() ? 860 : 600, maxWidth(right, s, ox) * SAFE));
+  const W = Math.max(280, Math.min(isPortrait() ? 820 : 600, maxWidth(right, s, ox) * SAFE));
   const titleFit = title?.trim() ? fit(title, W - 8, L.titleFs, L.titleFs, 44, L.titleLS / L.titleFs) : null;
   const subFit = subtitle?.trim() ? fit(subtitle, W - L.subPadL - L.subPadR, L.subFs, 32, 30, L.subLS / L.subFs) : null;
   const plateChrome = L.platePadL + L.numML + numW + L.numMR + L.platePadR;

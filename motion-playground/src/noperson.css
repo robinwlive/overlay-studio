@@ -126,8 +126,9 @@
 .stage[data-aspect="9:16"] .slot {
   left: 0;
   right: 0;
+  /* 右侧 960 是硬边界:抖音的点赞/评论按钮列在 x>1000,内容伸进去会被挡住 */
   width: auto;
-  margin: 0 64px;
+  margin: 0 120px 0 64px;
   justify-content: center;
   transform-origin: center center;
 }
@@ -169,4 +170,12 @@
   right: auto !important;
   left: 0 !important;
   transform-origin: 0 0 !important;
+}
+
+/* ---- 竖屏字幕带:抬高到平台遮挡区之上 ----
+   横屏字幕贴底(bottom:44)没问题;竖屏底部 1780 以下是平台的文案/互动区,
+   双语字幕(中文 50px + 英文 28px,块高约 110)贴底会整块落进去,
+   实测英文行掉到 y≈1900 —— 发出去会被平台 UI 盖掉。 */
+.stage[data-aspect="9:16"] .ctrack {
+  bottom: 180px;
 }

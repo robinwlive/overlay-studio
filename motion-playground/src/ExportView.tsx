@@ -41,6 +41,10 @@ function renderCard(
   if (!def) return null;
   const C = def.Component;
   const side = (card.params.side as string) ?? "left";
+  // 无人物时,收到中间的卡同预览一样放大一档(成对的卡不放大)
+  const solo = np.center.has(card.id) || np.box.has(card.id);
+  // 竖屏:内容卡放大一档才填得满 1080 宽(字幕层用小一点的系数)
+  const pb = card.kind === "caption-track" ? PORTRAIT_CAPTION_BOOST : card.kind === "chapter-bar" ? 1 : PORTRAIT_BOOST;
   // __start:让卡内视频知道自己相对整条时间轴的起点
   // __t/__end:让时间感知卡(章节条/字幕层)拿到时间轴当前秒和自己的终点
   const params: Record<string, unknown> = {
@@ -51,14 +55,13 @@ function renderCard(
     __start: card.start ?? 0,
     __t: t,
     __end: card.end,
+    // 放大系数必须让卡片自己也知道(卡片内部排版读 __scale)。
+    // 漏了它 → 卡片按 1.0 算宽度、按 1.3 渲染 → 撑出画(竖屏 46s 那条 1060px)
+    __scale: (solo ? NOPERSON_BOOST : 1) * (aspect === "9:16" ? pb : 1),
   };
   // 运镜卡的口播:单卡没传就用全局口播(doc.cam),按时间轴自动对位
   if (cam && !params.camSrc) params.camSrc = cam;
-  // 每卡缩放/倍速 × 全局值,和 Studio 预览一致。
-  // 无人物时,收到中间的卡同预览一样放大一档(成对的卡不放大)
-  const solo = np.center.has(card.id) || np.box.has(card.id);
-  // 竖屏:内容卡放大一档才填得满 1080 宽(字幕层用小一点的系数)
-  const pb = card.kind === "caption-track" ? PORTRAIT_CAPTION_BOOST : card.kind === "chapter-bar" ? 1 : PORTRAIT_BOOST;
+  // 每卡缩放/倍速 × 全局值,和 Studio 预览一致
   const scale = fxScale * (Number(card.params.scale) || 1) * (solo ? NOPERSON_BOOST : 1) * (aspect === "9:16" ? pb : 1);
   const speed = jobSpeed * (Number(card.params.speed) || 1);
   // 讲过变浅:时间轴过了 dimAt 秒后整卡压暗让位(仍在场,不退场)

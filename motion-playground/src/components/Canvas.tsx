@@ -108,6 +108,8 @@ function CardShell({
   children: ReactNode;
 }) {
   const { w: STAGE_W, h: STAGE_H } = STAGE;
+  // 卡片内部排版读 params.scale × params.__scale,所以放大系数必须走 __scale 传进去,
+  // 否则「按 1.0 算宽度、按 1.3 渲染」→ 撑出画(竖屏踩过)
   const scale = fxScale * (Number(params.scale) || 1) * (npBoost ?? 1);
   // 有效倍速 = 全局「动画速度」×该卡自己的「动画速度(此卡)」
   const speed = animSpeed * (Number(params.speed) || 1);
@@ -431,6 +433,11 @@ export function Canvas({
                   __t: now,
                   __start: card.start,
                   __end: card.end,
+                  // 放大系数也要让卡片自己知道(见 CardShell 里的说明)
+                  __scale:
+                    (noperson?.center.has(card.id) || noperson?.box.has(card.id)
+                      ? NOPERSON_BOOST
+                      : 1) * portraitBoost(card.kind),
                 };
                 // 退场淡出:卡片走到 end 就被卸掉,先在这最后一小段把它淡走
                 const outro = now === undefined ? 1 : outroFade(now, card);

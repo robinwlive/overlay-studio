@@ -286,7 +286,6 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
   const trunkK = eOutCubic(prog(t, 0.2, 0.8));
   const brK = [spring(Math.max(0, t - 0.75), 10, 0.55), spring(Math.max(0, t - 1.05), 10, 0.55)];
 
-  const trunkW = 190;
   const rowGap = 150;
 
   return (
@@ -305,8 +304,8 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
       <div
         style={{
           position: "absolute",
-          left: cx - 150,
-          width: 300,
+          left: cx - 200,
+          width: 400,
           top,
           textAlign: "center",
           fontSize: FS,
@@ -318,14 +317,14 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
         {params.origin || "当初那件事"}
       </div>
 
-      {/* 主干 */}
+      {/* 主干（起点 → 分叉点，竖直向下） */}
       <div
         style={{
           position: "absolute",
-          left: cx - trunkW / 2,
-          top: top + 54,
-          width: trunkW * trunkK,
-          height: 4,
+          left: cx - 2,
+          top: top + FS * 1.3,
+          width: 4,
+          height: 96 * trunkK,
           borderRadius: 2,
           background: "var(--hud-line)",
         }}
@@ -335,7 +334,7 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
         style={{
           position: "absolute",
           left: cx - 7,
-          top: top + 47,
+          top: top + FS * 1.3 + 96,
           width: 14,
           height: 14,
           borderRadius: "50%",
@@ -344,10 +343,15 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
         }}
       />
 
-      {/* 两条分支 */}
+      {/* 两条分支
+       * ⚠️ 2026-10-27 实测修：分支 0 的标签原来在 `top - 26`，而**起点标签在 `top`** ——
+       *   两者只差 26px，字号 28+ 时必然重叠（成片抽帧 133s 实测糊在一起）。
+       *   现在改成**竖向主干**：起点在 `top` → 主干竖直向下 → 分叉点在 `top + 字号×1.3 + 96`
+       *   → 两枝从分叉点向左下 / 右下展开 → 标签在分叉点下方 40px 与 40+rowGap。
+       *   这样「起点 / 主干 / 分叉点 / 两枝标签」**四层各占一段，互不重叠**。 */}
       {[
-        { label: a, y: top - 26, k: brK[0], color: acc },
-        { label: b, y: top + 74 + rowGap - rowGap, k: brK[1], color: "var(--hud-muted)" },
+        { label: a, y: top + FS * 1.3 + 96 + 56, k: brK[0], color: acc },
+        { label: b, y: top + FS * 1.3 + 96 + 56 + rowGap, k: brK[1], color: "var(--hud-muted)" },
       ].map((br2, i) => (
         <div key={`${uid}-${i}`}>
           {/* 分枝线：从分叉点斜向两边 */}
@@ -355,15 +359,15 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
             style={{
               position: "absolute",
               left: cx - 260,
-              top: top + 40,
+              top: top + FS * 1.3 + 96,
               width: 520,
-              height: rowGap + 60,
+              height: rowGap + 80,
               overflow: "visible",
               pointerEvents: "none",
             }}
           >
             <path
-              d={`M 260 12 C 260 12, ${i === 0 ? 150 : 370} ${i === 0 ? 0 : rowGap}, ${i === 0 ? 60 : 460} ${i === 0 ? 0 : rowGap}`}
+              d={`M 260 0 C 260 0, ${i === 0 ? 160 : 360} ${i === 0 ? 20 : rowGap}, ${i === 0 ? 60 : 460} ${i === 0 ? 24 : rowGap + 4}`}
               fill="none"
               stroke={br2.color}
               strokeWidth={4}
@@ -377,7 +381,7 @@ function PathFork({ params, playToken }: EffectProps<PathForkParams>) {
           <div
             style={{
               position: "absolute",
-              left: i === 0 ? cx - 460 : cx + 60,
+              left: i === 0 ? cx - 470 : cx + 70,
               width: 400,
               top: br2.y,
               textAlign: i === 0 ? "right" : "left",

@@ -21,6 +21,7 @@ import { statProofDef } from "./hud/StatProof";
 import { growthCurveDef } from "./hud/GrowthCurve";
 import { entityChipsDef } from "./hud/EntityChips";
 import { pinBoardDef } from "./hud/PinBoard";
+import { pathTrackDef, pathForkDef, pathFunnelDef, pathStairDef } from "./hud/PathCards";
 import { withBreath } from "./breath";
 
 /** 按用途分组:同组内是"同一类需求的可选项",挑一张用即可 */
@@ -47,6 +48,12 @@ export const EFFECT_GROUPS: EffectGroup[] = [
   {
     title: "对比取舍",
     effects: [versusCardDef],
+  },
+  {
+    /* 路径家族（2026-10-27 新增）:一条路 / 岔路 / 收敛 / 阶梯
+       —— 现有 20 张卡没有「路径」这类形状，讲「我挑了一条路」只能退化成纯文字 */
+    title: "路径家族",
+    effects: [pathTrackDef, pathForkDef, pathFunnelDef, pathStairDef],
   },
   {
     title: "金句观点",
